@@ -30,8 +30,9 @@ type AnyData = BaseballData | TicketData | GameData | ReceiptData | WishlistData
 interface Props {
   globalFont: string
   systemFonts: string[]
-  onConfirm: (dataUrl: string, w: number, h: number, linkUrl?: string) => void
+  onConfirm: (dataUrl: string, w: number, h: number, linkUrl?: string, templateId?: string, templateData?: Record<string, any>) => void
   onCancel: () => void
+  editMode?: { templateId: TemplateId; data: AnyData }
 }
 
 type Imgs = Record<string, HTMLImageElement>
@@ -2608,12 +2609,12 @@ function SkincareForm({ d, u }: { d: SkincareData; u: (p: Partial<SkincareData>)
 
 // ── Main modal ────────────────────────────────────────────────────────────────
 
-export default function TemplateModal({ globalFont, systemFonts, onConfirm, onCancel }: Props) {
-  const [step, setStep] = useState<'category' | 'template' | 'form'>('category')
+export default function TemplateModal({ globalFont, systemFonts, onConfirm, onCancel, editMode }: Props) {
+  const [step, setStep] = useState<'category' | 'template' | 'form'>(editMode ? 'form' : 'category')
   const [category, setCategory] = useState<Category>('hobby')
-  const [templateId, setTemplateId] = useState<TemplateId>('baseball')
+  const [templateId, setTemplateId] = useState<TemplateId>(editMode?.templateId ?? 'baseball')
   const [allDefaults, setAllDefaults] = useState<Record<string, Record<string, string>>>({})
-  const [data, setData] = useState<AnyData>(defaultData('baseball'))
+  const [data, setData] = useState<AnyData>(editMode?.data ?? defaultData('baseball'))
   const [cardFont, setCardFont] = useState(globalFont || 'Apple SD Gothic Neo')
   const [fontSearch, setFontSearch] = useState('')
   const [showFontList, setShowFontList] = useState(false)
@@ -2666,7 +2667,7 @@ export default function TemplateModal({ globalFont, systemFonts, onConfirm, onCa
         (templateId === 'wishlist' || templateId === 'checkin') && d.link ? d.link :
         templateId === 'youtube' && d.url ? d.url :
         undefined
-      onConfirm(r.dataUrl, r.w, r.h, linkUrl)
+      onConfirm(r.dataUrl, r.w, r.h, linkUrl, templateId, data as Record<string, any>)
     } finally {
       setGenerating(false)
     }
@@ -2737,11 +2738,13 @@ export default function TemplateModal({ globalFont, systemFonts, onConfirm, onCa
         {/* ── 폼 입력 ── */}
         {step === 'form' && <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-            <button onClick={() => setStep('template')} style={{
-              border: '1px solid #e8e8e8', borderRadius: 8, background: 'none',
-              cursor: 'pointer', width: 28, height: 28, fontSize: 14, color: '#888',
-            }}>←</button>
-            <span style={{ fontSize: 15, fontWeight: 700 }}>{currentTpl?.emoji} {currentTpl?.label}</span>
+            {!editMode && (
+              <button onClick={() => setStep('template')} style={{
+                border: '1px solid #e8e8e8', borderRadius: 8, background: 'none',
+                cursor: 'pointer', width: 28, height: 28, fontSize: 14, color: '#888',
+              }}>←</button>
+            )}
+            <span style={{ fontSize: 15, fontWeight: 700 }}>{currentTpl?.emoji} {currentTpl?.label}{editMode ? ' 수정' : ''}</span>
           </div>
 
           {/* 폰트 선택 */}
@@ -2797,7 +2800,7 @@ export default function TemplateModal({ globalFont, systemFonts, onConfirm, onCa
             border: 'none', borderRadius: 10, cursor: generating ? 'default' : 'pointer',
             fontSize: 14, fontWeight: 600,
           }}>
-            {generating ? '생성 중...' : '카드 생성 ✦'}
+            {generating ? '생성 중...' : editMode ? '카드 업데이트 ✦' : '카드 생성 ✦'}
           </button>
         </>}
       </div>

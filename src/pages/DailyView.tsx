@@ -37,6 +37,8 @@ export interface CanvasEl {
   linkUrl?: string
   cardType?: string
   cardData?: Record<string, string>
+  templateId?: string
+  templateData?: Record<string, any>
   groupId?: string
   locked?: boolean
   flipH?: boolean
@@ -437,6 +439,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
   const [customShapes, setCustomShapes] = useState<CustomShape[]>([])
   const [tweetMsg, setTweetMsg] = useState<{text: string; type: 'info'|'error'} | null>(null)
   const [showTemplate, setShowTemplate] = useState(false)
+  const [editingTemplateElId, setEditingTemplateElId] = useState<string | null>(null)
 
   // Background inputs
   const [bgHexInput, setBgHexInput] = useState(DEFAULT_DATA.bg)
@@ -1621,6 +1624,10 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                   }
                 }
                 if (el.type === 'markdown') { setSelectedId(el.id); setEditingId(el.id) }
+                if (el.type === 'photo' && el.templateId) {
+                  setEditingTemplateElId(el.id)
+                  setShowTemplate(true)
+                }
               }}
               onClick={e => e.stopPropagation()}>
 
@@ -2100,23 +2107,46 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
       </div>
 
       {/* Template modal */}
-      {showTemplate && (
-        <TemplateModal
-          globalFont={globalFont}
-          systemFonts={systemFonts}
-          onConfirm={(dataUrl, w, h, linkUrl) => {
-            const c = canvasRef.current
-            const cx = c ? Math.max(0, c.clientWidth / 2 - w / 2) : 60
-            const cy = c ? Math.max(0, c.clientHeight / 2 - h / 2) : 60
-            const mz = dataRef.current.elements.reduce((m, el) => Math.max(m, el.z), 0)
-            const el = { ...makeEl('photo', cx, cy, dataUrl, mz), w, h, ...(linkUrl ? { linkUrl } : {}) }
-            const next = { ...dataRef.current, elements: [...dataRef.current.elements, el] }
-            setData(next); persistRef.current(next); setSelectedId(el.id)
-            setShowTemplate(false)
-          }}
-          onCancel={() => setShowTemplate(false)}
-        />
-      )}
+      {showTemplate && (() => {
+        const editEl = editingTemplateElId ? dataRef.current.elements.find(e => e.id === editingTemplateElId) : null
+        const editMode = editEl?.templateId
+          ? { templateId: editEl.templateId as any, data: editEl.templateData as any }
+          : undefined
+        return (
+          <TemplateModal
+            globalFont={globalFont}
+            systemFonts={systemFonts}
+            editMode={editMode}
+            onConfirm={(dataUrl, w, h, linkUrl, tplId, tplData) => {
+              if (editingTemplateElId) {
+                const next = {
+                  ...dataRef.current,
+                  elements: dataRef.current.elements.map(e =>
+                    e.id === editingTemplateElId
+                      ? { ...e, content: dataUrl, w, h, linkUrl: linkUrl ?? e.linkUrl, templateData: tplData }
+                      : e
+                  )
+                }
+                setData(next); persistRef.current(next); setSelectedId(editingTemplateElId)
+              } else {
+                const c = canvasRef.current
+                const cx = c ? Math.max(0, c.clientWidth / 2 - w / 2) : 60
+                const cy = c ? Math.max(0, c.clientHeight / 2 - h / 2) : 60
+                const mz = dataRef.current.elements.reduce((m, e) => Math.max(m, e.z), 0)
+                const el = {
+                  ...makeEl('photo', cx, cy, dataUrl, mz), w, h,
+                  ...(linkUrl ? { linkUrl } : {}),
+                  ...(tplId ? { templateId: tplId, templateData: tplData } : {}),
+                }
+                const next = { ...dataRef.current, elements: [...dataRef.current.elements, el] }
+                setData(next); persistRef.current(next); setSelectedId(el.id)
+              }
+              setShowTemplate(false); setEditingTemplateElId(null)
+            }}
+            onCancel={() => { setShowTemplate(false); setEditingTemplateElId(null) }}
+          />
+        )
+      })()}
 
       {showMarkdownTest && (
         <MarkdownTestBox onClose={() => setShowMarkdownTest(false)} />
