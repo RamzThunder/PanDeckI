@@ -92,9 +92,9 @@ function getPhotoClipStyle(shape: string, customShapes: CustomShape[]): React.CS
 
 function getVideoEmbedUrl(url: string): string | null {
   const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/)
-  if (yt) return `https://www.youtube.com/embed/${yt[1]}?rel=0`
+  if (yt) return `https://www.youtube.com/embed/${yt[1]}?rel=0&playsinline=1`
   const vimeo = url.match(/vimeo\.com\/(\d+)/)
-  if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`
+  if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}?playsinline=1`
   return null
 }
 
@@ -407,10 +407,9 @@ function InteractiveOverlay({ url, cmdHeld }: { url: string; cmdHeld: boolean })
       style={{
         position: 'absolute', inset: 0, zIndex: 5,
         pointerEvents: cmdHeld ? 'auto' : 'none',
-        cursor: cmdHeld ? 'pointer' : 'default',
+        cursor: 'pointer',
       }}
-      onPointerDown={e => { if (cmdHeld) { e.stopPropagation(); e.preventDefault() } }}
-      onClick={e => { if (e.metaKey) { e.stopPropagation(); window.open(url, '_blank') } }}
+      onClick={e => { if (e.metaKey) { e.stopPropagation(); api.shell.openUrl(url) } }}
     />
   )
 }
@@ -840,7 +839,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
       const cx = c ? Math.max(0, c.clientWidth / 2 - w / 2) : 60
       const cy = c ? Math.max(0, c.clientHeight / 2 - h / 2) : 60
       const mz = dataRef.current.elements.reduce((m, el) => Math.max(m, el.z), 0)
-      const el = { ...makeEl('photo', cx, cy, dataUrl, mz), w, h }
+      const el = { ...makeEl('photo', cx, cy, dataUrl, mz), w, h, linkUrl: tweetUrl }
       const next = { ...dataRef.current, elements: [...dataRef.current.elements, el] }
       setData(next); persistRef.current(next); setSelectedId(el.id)
       return true
@@ -1722,13 +1721,15 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                       <iframe
                         src={getVideoEmbedUrl(el.content) ?? ''}
                         style={{ width: '100%', height: '100%', border: 'none', pointerEvents: cmdHeld ? 'auto' : 'none' }}
-                        allow="autoplay; fullscreen"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        allowFullScreen
                       />
                     ) : (
                       <video
                         src={convertFileSrc(el.content)}
                         style={{ width: '100%', height: '100%', objectFit: 'contain', pointerEvents: cmdHeld ? 'auto' : 'none' }}
                         controls
+                        playsInline
                       />
                     )}
                   </div>
@@ -1748,7 +1749,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                   <TweetCard data={el.cardData ?? {}} w={el.w} h={el.h} />
                 )}
 
-                {interactiveUrl && <InteractiveOverlay url={interactiveUrl} cmdHeld={cmdHeld} />}
+                {interactiveUrl && el.type !== 'video' && <InteractiveOverlay url={interactiveUrl} cmdHeld={cmdHeld} />}
               </div>
 
               {isSel && !isEdit && (<>

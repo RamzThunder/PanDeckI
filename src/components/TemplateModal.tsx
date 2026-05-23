@@ -2662,7 +2662,10 @@ export default function TemplateModal({ globalFont, systemFonts, onConfirm, onCa
       }
       const r = generate(templateId, data, cardFont, imgs, globalProfile.name)
       cleanupFont()
-      const linkUrl = (templateId === 'wishlist' || templateId === 'checkin') && d.link ? d.link : undefined
+      const linkUrl =
+        (templateId === 'wishlist' || templateId === 'checkin') && d.link ? d.link :
+        templateId === 'youtube' && d.url ? d.url :
+        undefined
       onConfirm(r.dataUrl, r.w, r.h, linkUrl)
     } finally {
       setGenerating(false)

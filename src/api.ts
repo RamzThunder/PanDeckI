@@ -65,6 +65,11 @@ export const api = {
       return invoke('list_system_fonts')
     }
   },
+  shell: {
+    async openUrl(url: string): Promise<void> {
+      await invoke('open_url', { url })
+    }
+  },
   http: {
     async fetchText(url: string): Promise<string> {
       return invoke<string>('fetch_text', { url })

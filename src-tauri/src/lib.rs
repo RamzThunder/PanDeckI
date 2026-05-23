@@ -52,6 +52,7 @@ pub fn run() {
             commands::capture_screenshot_to,
             commands::backup_export_to,
             commands::backup_import_from,
+            commands::open_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
