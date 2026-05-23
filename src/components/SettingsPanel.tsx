@@ -14,6 +14,10 @@ interface Props {
   onFontScaleChange: (v: number) => void
   fontOffsetY: number
   onFontOffsetYChange: (v: number) => void
+  mosaicIntensity: number
+  onMosaicIntensityChange: (v: number) => void
+  blurIntensity: number
+  onBlurIntensityChange: (v: number) => void
   onClose: () => void
 }
 
@@ -77,6 +81,8 @@ export default function SettingsPanel({
   systemFonts,
   fontScale, onFontScaleChange,
   fontOffsetY, onFontOffsetYChange,
+  mosaicIntensity, onMosaicIntensityChange,
+  blurIntensity, onBlurIntensityChange,
   onClose,
 }: Props): JSX.Element {
   const [tab, setTab] = useState<Tab>('theme')
@@ -327,6 +333,46 @@ export default function SettingsPanel({
                 value={fontOffsetY}
                 onChange={e => onFontOffsetYChange(Number(e.target.value))}
                 className="w-full cursor-pointer" />
+            </section>
+
+            <section>
+              <p className="text-xs font-semibold mb-3" style={{ color: 'var(--color-text-muted)' }}>유령 모드 효과</p>
+              <div className="flex flex-col gap-4">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs" style={{ color: 'var(--color-text)' }}>모자이크 강도</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold" style={{ color: '#9c59d1' }}>{mosaicIntensity}</span>
+                      <button onClick={() => onMosaicIntensityChange(14)} className="text-xs hover:opacity-70"
+                        style={{ color: 'var(--color-text-muted)' }}>초기화</button>
+                    </div>
+                  </div>
+                  <input type="range" min={4} max={40} step={2} value={mosaicIntensity}
+                    onChange={e => onMosaicIntensityChange(Number(e.target.value))}
+                    className="w-full cursor-pointer" />
+                  <div className="flex justify-between mt-0.5">
+                    <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>세밀하게</span>
+                    <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>굵게</span>
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs" style={{ color: 'var(--color-text)' }}>블러 강도</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold" style={{ color: '#9c59d1' }}>{blurIntensity}px</span>
+                      <button onClick={() => onBlurIntensityChange(12)} className="text-xs hover:opacity-70"
+                        style={{ color: 'var(--color-text-muted)' }}>초기화</button>
+                    </div>
+                  </div>
+                  <input type="range" min={2} max={40} step={1} value={blurIntensity}
+                    onChange={e => onBlurIntensityChange(Number(e.target.value))}
+                    className="w-full cursor-pointer" />
+                  <div className="flex justify-between mt-0.5">
+                    <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>약하게</span>
+                    <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>강하게</span>
+                  </div>
+                </div>
+              </div>
             </section>
 
             <section>

@@ -24,6 +24,8 @@ export default function App(): JSX.Element {
   const [globalFont, setGlobalFont] = useState('')
   const [fontScale, setFontScale] = useState(1.0)
   const [fontOffsetY, setFontOffsetY] = useState(0)
+  const [mosaicIntensity, setMosaicIntensity] = useState(14)
+  const [blurIntensity, setBlurIntensity] = useState(12)
 
   const zoomRef = useRef(appZoom)
   zoomRef.current = appZoom
@@ -65,6 +67,12 @@ export default function App(): JSX.Element {
         const v = parseFloat(savedFontOffsetY)
         if (!isNaN(v)) { setFontOffsetY(v); document.documentElement.style.setProperty('--font-offset-y', v + 'px') }
       }
+
+      const savedMosaic = await api.settings.get('ghostMosaicIntensity').catch(() => null)
+      if (savedMosaic) { const v = parseInt(savedMosaic); if (!isNaN(v)) setMosaicIntensity(v) }
+
+      const savedBlur = await api.settings.get('ghostBlurIntensity').catch(() => null)
+      if (savedBlur) { const v = parseInt(savedBlur); if (!isNaN(v)) setBlurIntensity(v) }
     }
     loadSettings()
     api.fonts.list().then(fonts => setSystemFonts(fonts)).catch(() => {})
@@ -138,6 +146,16 @@ export default function App(): JSX.Element {
     api.settings.set('fontOffsetY', v.toString()).catch(() => {})
   }
 
+  const handleMosaicIntensityChange = (v: number) => {
+    setMosaicIntensity(v)
+    api.settings.set('ghostMosaicIntensity', v.toString()).catch(() => {})
+  }
+
+  const handleBlurIntensityChange = (v: number) => {
+    setBlurIntensity(v)
+    api.settings.set('ghostBlurIntensity', v.toString()).catch(() => {})
+  }
+
   return (
     <div style={{
       width: CANVAS_W, height: CANVAS_H,
@@ -178,6 +196,8 @@ export default function App(): JSX.Element {
               onToday={() => nav.goToDate(new Date())}
               systemFonts={systemFonts}
               globalFont={globalFont}
+              mosaicIntensity={mosaicIntensity}
+              blurIntensity={blurIntensity}
             />
           </div>
         )}
@@ -194,6 +214,10 @@ export default function App(): JSX.Element {
           onFontScaleChange={handleFontScaleChange}
           fontOffsetY={fontOffsetY}
           onFontOffsetYChange={handleFontOffsetYChange}
+          mosaicIntensity={mosaicIntensity}
+          onMosaicIntensityChange={handleMosaicIntensityChange}
+          blurIntensity={blurIntensity}
+          onBlurIntensityChange={handleBlurIntensityChange}
           systemFonts={systemFonts}
           onClose={() => setShowSettings(false)}
         />

@@ -14,6 +14,8 @@ interface Props {
   onToday: () => void
   systemFonts: string[]
   globalFont: string
+  mosaicIntensity: number
+  blurIntensity: number
 }
 
 export interface CanvasEl {
@@ -44,6 +46,7 @@ export interface CanvasEl {
   flipH?: boolean
   flipV?: boolean
   isGhost?: boolean
+  ghostMode?: 'exclude' | 'mosaic' | 'blur'
 }
 
 export interface DailyData {
@@ -64,6 +67,33 @@ interface MultiResizeOp  { kind: 'multiresize';  ids: string[]; sx: number; sy: 
 type ActiveOp = DragOp | ResizeOp | RotateOp | MultiDragOp | MarqueeOp | MultiResizeOp
 
 const DEFAULT_DATA: DailyData = { elements: [], bg: '#FFF8F0' }
+
+function getGhostMode(el: CanvasEl): 'exclude' | 'mosaic' | 'blur' | undefined {
+  return el.ghostMode ?? (el.isGhost ? 'exclude' : undefined)
+}
+
+function applyMosaicExport(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, elX: number, elY: number, elW: number, elH: number, dpr: number, pixelSize = 14) {
+  const px = Math.max(0, Math.floor(elX * dpr))
+  const py = Math.max(0, Math.floor(elY * dpr))
+  const pw = Math.min(Math.ceil(elW * dpr), canvas.width - px)
+  const ph = Math.min(Math.ceil(elH * dpr), canvas.height - py)
+  if (pw <= 0 || ph <= 0) return
+  const smallW = Math.max(1, Math.floor(pw / pixelSize))
+  const smallH = Math.max(1, Math.floor(ph / pixelSize))
+  const imgData = ctx.getImageData(px, py, pw, ph)
+  const tempC = document.createElement('canvas')
+  tempC.width = pw; tempC.height = ph
+  tempC.getContext('2d')!.putImageData(imgData, 0, 0)
+  const smallC = document.createElement('canvas')
+  smallC.width = smallW; smallC.height = smallH
+  const sctx = smallC.getContext('2d')!
+  sctx.drawImage(tempC, 0, 0, smallW, smallH)
+  ctx.save()
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.imageSmoothingEnabled = false
+  ctx.drawImage(smallC, px, py, pw, ph)
+  ctx.restore()
+}
 const BG_COLORS = ['#FFF8F0','#FDE8F0','#E8F4E8','#E8F0FF','#FFF4E8','#F0F8FF','#FFFFFF','#F5F5F5']
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -416,7 +446,7 @@ function InteractiveOverlay({ url, cmdHeld }: { url: string; cmdHeld: boolean })
   )
 }
 
-export default function DailyView({ currentDate, onPrev, onNext, onToday, systemFonts, globalFont }: Props): JSX.Element {
+export default function DailyView({ currentDate, onPrev, onNext, onToday, systemFonts, globalFont, mosaicIntensity, blurIntensity }: Props): JSX.Element {
   const dateStr = toLocalDate(currentDate)
   const [data, setData] = useState<DailyData>(DEFAULT_DATA)
   const [saved, setSaved] = useState(false)
@@ -426,6 +456,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showStickers, setShowStickers] = useState(false)
   const [showVideoMenu, setShowVideoMenu] = useState(false)
+  const [showGhostMenu, setShowGhostMenu] = useState(false)
   const [showMarkdownTest, setShowMarkdownTest] = useState(false)
   const [showVideoUrlInput, setShowVideoUrlInput] = useState(false)
   const [videoUrlInput, setVideoUrlInput] = useState('')
@@ -659,10 +690,12 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
         ctx.restore()
       } catch {}
     }
-    for (const el of [...d.elements].filter(el => !el.isGhost).sort((a, b) => a.z - b.z)) {
+    for (const el of [...d.elements].filter(el => getGhostMode(el) !== 'exclude').sort((a, b) => a.z - b.z)) {
       if (el.type === 'video') continue
+      const gm = getGhostMode(el)
       ctx.save()
       ctx.globalAlpha = el.opacity / 100
+      if (gm === 'blur') ctx.filter = `blur(${blurIntensity}px)`
       ctx.translate(el.x + el.w / 2, el.y + el.h / 2)
       ctx.rotate((el.rotation * Math.PI) / 180)
       ctx.translate(-el.w / 2, -el.h / 2)
@@ -741,6 +774,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
         } catch {}
       }
       ctx.restore()
+      if (gm === 'mosaic') applyMosaicExport(ctx, offscreen, el.x, el.y, el.w, el.h, dpr, mosaicIntensity)
     }
     const b64 = offscreen.toDataURL('image/png').split(',')[1]
     await api.export.savePng(b64)
@@ -1328,12 +1362,19 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
       onClick={e => {
         if (e.metaKey) return
         if (justMarqueedRef.current) { justMarqueedRef.current = false; return }
-        setSelectedId(null); setMultiIds([]); setEditingId(null); setShowStickers(false); setShowFontList(false); setShowFontSizeList(false); setShowVideoMenu(false)
+        setSelectedId(null); setMultiIds([]); setEditingId(null); setShowStickers(false); setShowFontList(false); setShowFontSizeList(false); setShowVideoMenu(false); setShowGhostMenu(false)
       }}>
 
-      {/* SVG clip-path defs (backward compat for old entries) */}
+      {/* SVG defs — clip-path + ghost filters */}
       <svg width="0" height="0" style={{ position: 'absolute', pointerEvents: 'none' }}>
         <defs>
+          <filter id="pixelate-filter" x="0%" y="0%" width="100%" height="100%" colorInterpolationFilters="sRGB">
+            <feFlood x={Math.round(mosaicIntensity * 0.35)} y={Math.round(mosaicIntensity * 0.35)} height="2" width="2"/>
+            <feComposite width={mosaicIntensity} height={mosaicIntensity}/>
+            <feTile result="a"/>
+            <feComposite in="SourceGraphic" in2="a" operator="in"/>
+            <feMorphology operator="dilate" radius={Math.round(mosaicIntensity / 2)}/>
+          </filter>
           <clipPath id="clip-heart" clipPathUnits="objectBoundingBox">
             <path d="M0.5,0.3 C0.5,0.1 0.75,0.05 0.875,0.2 C1,0.35 1,0.6 0.875,0.75 L0.5,1 L0.125,0.75 C0,0.6 0,0.35 0.125,0.2 C0.25,0.05 0.5,0.1 0.5,0.3 Z" />
           </clipPath>
@@ -1595,6 +1636,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
           const justifyV = el.alignV === 'top' ? 'flex-start' : el.alignV === 'middle' ? 'center' : 'flex-end'
           const textRad = el.textRadius ?? 0
           const bw = el.borderWidth ?? 0
+          const gm = getGhostMode(el)
           const interactiveUrl: string | null =
             el.type === 'video' && el.videoType === 'embed' ? el.content :
             el.type === 'card' && el.cardType === 'tweet' ? (el.cardData?.url ?? null) :
@@ -1605,11 +1647,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
               style={{
                 position: 'absolute', left: el.x, top: el.y, width: el.w, height: el.h, zIndex: el.z,
                 transform: `rotate(${el.rotation}deg) scaleX(${el.flipH ? -1 : 1}) scaleY(${el.flipV ? -1 : 1})`,
-                outline: (isSel || multiIds.includes(el.id))
-                  ? '2px solid var(--color-primary-dark)'
-                  : el.isGhost
-                    ? '1.5px dashed rgba(130,80,200,0.5)'
-                    : '2px solid transparent',
+                outline: (isSel || multiIds.includes(el.id)) ? '2px solid var(--color-primary-dark)' : '2px solid transparent',
                 outlineOffset: 2,
                 cursor: isEdit ? 'default' : el.locked ? 'default' : 'move',
               }}
@@ -1639,6 +1677,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                 borderRadius: el.type === 'photo'
                   ? (el.clipShape === 'none' ? `${el.photoRadius ?? 0}%` : 0)
                   : (el.type === 'text' || el.type === 'markdown') ? `${textRad}px` : 0,
+                filter: gm === 'blur' ? `blur(${blurIntensity}px)` : gm === 'mosaic' ? "url('#pixelate-filter')" : undefined,
               }}>
                 {el.type === 'text' && (
                   isEdit ? (
@@ -1769,6 +1808,22 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
           )
         })}
 
+        {/* Ghost mode outlines — rendered above all elements */}
+        {[...data.elements].map(el => {
+          const gm = getGhostMode(el)
+          if (!gm || el.id === selectedId || multiIds.includes(el.id)) return null
+          return (
+            <div key={`gm-outline-${el.id}`} style={{
+              position: 'absolute', left: el.x, top: el.y, width: el.w, height: el.h,
+              transform: `rotate(${el.rotation}deg) scaleX(${el.flipH ? -1 : 1}) scaleY(${el.flipV ? -1 : 1})`,
+              outline: '1.5px dashed rgba(130,80,200,0.5)',
+              outlineOffset: 2,
+              pointerEvents: 'none',
+              zIndex: 99990,
+            }} />
+          )
+        })}
+
         {/* Marquee selection overlay */}
         {marqueeRect && (
           <div style={{
@@ -1810,7 +1865,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
 
           const allGrouped = selEls.length > 1 && selEls.every(el => el.groupId && el.groupId === selEls[0].groupId)
           const allLocked  = selEls.every(el => !!el.locked)
-          const allGhost   = selEls.every(el => !!el.isGhost)
+          const multiGhostMode = (selEls.every(el => getGhostMode(el) === 'exclude') ? 'exclude' : selEls.every(el => getGhostMode(el) === 'mosaic') ? 'mosaic' : selEls.every(el => getGhostMode(el) === 'blur') ? 'blur' : undefined)
           const handleGroup = () => {
             if (allGrouped) {
               const next = { ...dataRef.current, elements: dataRef.current.elements.map(el => multiIds.includes(el.id) ? { ...el, groupId: undefined } : el) }
@@ -1852,10 +1907,34 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
               {sep}
               {mBtn(allGrouped ? ICONS.ungroup : ICONS.group, allGrouped ? '그룹 해제 (⌘G)' : '그룹화 (⌘G)', handleGroup, allGrouped)}
               {sep}
-              <button onClick={() => {
-                const next = { ...dataRef.current, elements: dataRef.current.elements.map(el => multiIds.includes(el.id) ? { ...el, isGhost: !allGhost } : el) }
-                setData(next); persistRef.current(next)
-              }} title="유령 모드" style={{ width: 28, height: 28, borderRadius: 6, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, border: `1px solid ${allGhost ? '#9c59d1' : 'var(--color-border)'}`, background: allGhost ? '#9c59d1' : 'transparent', color: allGhost ? '#fff' : 'var(--color-text-muted)' }}>{ICONS.ghost}</button>
+              {(() => {
+                const GHOST_COLOR = '#9c59d1'
+                const activeColor = multiGhostMode ? GHOST_COLOR : undefined
+                return (
+                  <div style={{ position: 'relative', flexShrink: 0 }}>
+                    <button title="유령 모드 (우클릭: 해제)" onClick={e => { e.stopPropagation(); setShowGhostMenu(v => !v) }}
+                      onContextMenu={e => { e.preventDefault(); e.stopPropagation(); const next = { ...dataRef.current, elements: dataRef.current.elements.map(el => multiIds.includes(el.id) ? { ...el, ghostMode: undefined, isGhost: undefined } : el) }; setData(next); persistRef.current(next); setShowGhostMenu(false) }}
+                      style={{ width: 28, height: 28, borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, border: `1px solid ${activeColor ?? 'var(--color-border)'}`, background: activeColor ?? 'transparent', color: activeColor ? '#fff' : 'var(--color-text-muted)' }}>
+                      {ICONS.ghost}
+                    </button>
+                    {showGhostMenu && (
+                      <div style={{ position: 'absolute', bottom: '110%', left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: 'var(--color-bg)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '4px', display: 'flex', flexDirection: 'column', gap: 2, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', minWidth: 88 }}>
+                        {([
+                          { key: 'exclude' as const, label: '제외' },
+                          { key: 'mosaic'  as const, label: '모자이크' },
+                          { key: 'blur'    as const, label: '블러' },
+                        ]).map(m => (
+                          <button key={m.key} onClick={e => { e.stopPropagation(); const next = { ...dataRef.current, elements: dataRef.current.elements.map(el => multiIds.includes(el.id) ? { ...el, ghostMode: multiGhostMode === m.key ? undefined : m.key, isGhost: undefined } : el) }; setData(next); persistRef.current(next); setShowGhostMenu(false) }}
+                            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 8px', borderRadius: 5, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: multiGhostMode === m.key ? 700 : 400, background: multiGhostMode === m.key ? GHOST_COLOR : 'transparent', color: multiGhostMode === m.key ? '#fff' : 'var(--color-text)', textAlign: 'left' }}>
+                            <span style={{ opacity: multiGhostMode === m.key ? 1 : 0.4, display: 'flex' }}>{ICONS.ghost}</span>
+                            {m.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
               {mBtn(allLocked ? ICONS.unlock : ICONS.lock, allLocked ? '잠금 해제' : '잠금', () => {
                 const next = { ...dataRef.current, elements: dataRef.current.elements.map(el => multiIds.includes(el.id) ? { ...el, locked: !allLocked } : el) }
                 setData(next); persistRef.current(next)
@@ -2094,8 +2173,30 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                 {rowBtn(ICONS.sendBackward, '뒤로', () => updateEl(selectedEl.id, { z: Math.max(1, selectedEl.z - 1) }))}
                 {rowBtn(ICONS.sendBack, '맨뒤로', () => updateEl(selectedEl.id, { z: 1 }))}
                 {vSep}
-                <button onClick={() => updateEl(selectedEl.id, { isGhost: !selectedEl.isGhost })} title="유령 모드"
-                  style={{ ...S, border: `1px solid ${selectedEl.isGhost ? '#9c59d1' : 'var(--color-border)'}`, background: selectedEl.isGhost ? '#9c59d1' : 'transparent', color: selectedEl.isGhost ? '#fff' : 'var(--color-text-muted)' }}>{ICONS.ghost}</button>
+                {(() => {
+                  const curGm = getGhostMode(selectedEl)
+                  const GHOST_COLOR = '#9c59d1'
+                  return (
+                    <div style={{ position: 'relative', flexShrink: 0 }}>
+                      <button title="유령 모드 (우클릭: 해제)" onClick={e => { e.stopPropagation(); setShowGhostMenu(v => !v) }}
+                        onContextMenu={e => { e.preventDefault(); e.stopPropagation(); updateEl(selectedEl.id, { ghostMode: undefined, isGhost: undefined }); setShowGhostMenu(false) }}
+                        style={{ ...S, border: `1px solid ${curGm ? GHOST_COLOR : 'var(--color-border)'}`, background: curGm ? GHOST_COLOR : 'transparent', color: curGm ? '#fff' : 'var(--color-text-muted)' }}>
+                        {ICONS.ghost}
+                      </button>
+                      {showGhostMenu && (
+                        <div style={{ position: 'absolute', bottom: '110%', left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: 'var(--color-bg)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '4px', display: 'flex', flexDirection: 'column', gap: 2, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', minWidth: 88 }}>
+                          {(['exclude', 'mosaic', 'blur'] as const).map(key => (
+                            <button key={key} onClick={e => { e.stopPropagation(); updateEl(selectedEl.id, { ghostMode: curGm === key ? undefined : key, isGhost: undefined }); setShowGhostMenu(false) }}
+                              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 8px', borderRadius: 5, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: curGm === key ? 700 : 400, background: curGm === key ? GHOST_COLOR : 'transparent', color: curGm === key ? '#fff' : 'var(--color-text)', textAlign: 'left' }}>
+                              <span style={{ opacity: curGm === key ? 1 : 0.4, display: 'flex' }}>{ICONS.ghost}</span>
+                              {key === 'exclude' ? '제외' : key === 'mosaic' ? '모자이크' : '블러'}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
                 {rowBtn(selectedEl.locked ? ICONS.unlock : ICONS.lock, selectedEl.locked ? '잠금 해제' : '잠금', () => updateEl(selectedEl.id, { locked: !selectedEl.locked }), !!selectedEl.locked)}
                 {vSep}
                 <button onClick={deleteSelected} title="삭제"

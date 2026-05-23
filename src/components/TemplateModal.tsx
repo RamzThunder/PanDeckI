@@ -973,24 +973,26 @@ function drawFood(d: FoodData, font: string, imgs: Imgs): { dataUrl: string; w: 
   }
 
   const brightness = (r * 299 + g * 587 + b * 114) / 1000
-  const isDark = brightness < 300
+  const isDark = brightness < 100
 
-  let ink: string, muted: string, coral: string, dateClr: string
+  let ink: string, muted: string, coral: string, dateClr: string, strokeClr: string
   if (isDark) {
-    ink     = '#FFFFFF'
-    muted   = 'rgba(255,255,255,0.95)'
-    coral   = 'rgba(255,255,255,0.95)'
-    dateClr = 'rgba(255,255,255,0.9)'
+    ink       = '#FFFFFF'
+    muted     = 'rgba(255,255,255,0.95)'
+    coral     = 'rgba(255,255,255,0.95)'
+    dateClr   = 'rgba(255,255,255,0.9)'
+    strokeClr = 'rgba(0,0,0,0.2)'
   } else {
     const max = Math.max(r, g, b) || 1
     const rN = Math.pow(r / max, 1.5)
     const gN = Math.pow(g / max, 1.5)
     const bN = Math.pow(b / max, 1.5)
     const dc = (factor: number) => `rgb(${Math.floor(rN * 255 * factor)}, ${Math.floor(gN * 255 * factor)}, ${Math.floor(bN * 255 * factor)})`
-    ink     = dc(0.35)
-    muted   = dc(0.55)
-    coral   = dc(0.5)
-    dateClr = `rgba(${Math.floor(rN * 255 * 0.5)}, ${Math.floor(gN * 255 * 0.5)}, ${Math.floor(bN * 255 * 0.5)}, 0.6)`
+    ink       = dc(0.35)
+    muted     = dc(0.55)
+    coral     = dc(0.5)
+    dateClr   = `rgba(${Math.floor(rN * 255 * 0.5)}, ${Math.floor(gN * 255 * 0.5)}, ${Math.floor(bN * 255 * 0.5)}, 0.6)`
+    strokeClr = 'rgba(255,255,255,0.3)'
   }
 
   // ── 배경 (테이블 매트) ──
@@ -1083,25 +1085,31 @@ function drawFood(d: FoodData, font: string, imgs: Imgs): { dataUrl: string; w: 
   // ── 텍스트 영역 (동적 색상 적용) ──
   let y = plateCY + plateR + 14
   ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+  ctx.lineJoin = 'round'
+
+  const st = (text: string, x: number, ty: number) => {
+    ctx.strokeStyle = strokeClr; ctx.lineWidth = 2; ctx.strokeText(text, x, ty)
+    ctx.fillText(text, x, ty)
+  }
 
   if (d.restaurant) {
     ctx.fillStyle = muted; ctx.font = `10px ${f}`
-    ctx.fillText(d.restaurant.slice(0, 24), W / 2, y); y += 16
+    st(d.restaurant.slice(0, 24), W / 2, y); y += 16
   }
 
   ctx.fillStyle = ink; ctx.font = `16px ${f}`
-  for (const line of dishLines) { ctx.fillText(line, W / 2, y); y += 19 }
+  for (const line of dishLines) { st(line, W / 2, y); y += 19 }
   y += 8
 
   if (commentLines.length > 0) {
     ctx.fillStyle = coral; ctx.font = `10px ${f}`
-    for (const line of commentLines) { ctx.fillText(line, W / 2, y); y += 14 }
+    for (const line of commentLines) { st(line, W / 2, y); y += 14 }
     y += 4
   }
 
   if (d.date) {
     ctx.fillStyle = dateClr; ctx.font = `8px ${f}`
-    ctx.fillText(d.date, W / 2, y)
+    st(d.date, W / 2, y)
   }
 
   return { dataUrl: finish(canvas), w: W, h: H }
