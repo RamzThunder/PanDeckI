@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default capabilities for On Diary","local":true,"windows":["main"],"permissions":["core:default","dialog:allow-save","dialog:allow-open","fs:allow-read-file","fs:allow-write-file","fs:allow-read-dir","fs:allow-mkdir","fs:allow-exists","fs:allow-remove","fs:default"]}}

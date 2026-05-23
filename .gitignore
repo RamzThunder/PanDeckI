@@ -1,0 +1,20 @@
+# 의존성
+node_modules/
+
+# 빌드 산출물
+dist/
+out/
+src-tauri/target/
+
+# 데이터 파일
+*.db
+
+# 스티커 (용량 큼, 별도 관리)
+sticker/
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Claude Code 로컬 설정
+.claude/

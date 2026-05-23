@@ -1,0 +1,203 @@
+import React, { useEffect, useRef, useState } from 'react'
+import { invoke } from '@tauri-apps/api/core'
+import { useDiaryNav } from './store/diary'
+import { PRESET_THEMES, applyTheme, applyGlobalFont } from './store/theme'
+import { api } from './api'
+import Sidebar from './components/Sidebar'
+import SettingsPanel from './components/SettingsPanel'
+import MonthlyView from './pages/MonthlyView'
+import DailyView from './pages/DailyView'
+
+const CANVAS_W = 1800
+const CANVAS_H = 1012
+
+function resizeWindow(zoom: number) {
+  invoke('resize_window', { width: Math.round(CANVAS_W * zoom), height: Math.round(CANVAS_H * zoom) }).catch(() => {})
+}
+
+export default function App(): JSX.Element {
+  const nav = useDiaryNav()
+  const [showSettings, setShowSettings] = useState(false)
+  const [activeThemeId, setActiveThemeId] = useState('strawberry')
+  const [systemFonts, setSystemFonts] = useState<string[]>([])
+  const [appZoom, setAppZoom] = useState(1.0)
+  const [globalFont, setGlobalFont] = useState('')
+  const [fontScale, setFontScale] = useState(1.0)
+  const [fontOffsetY, setFontOffsetY] = useState(0)
+
+  const zoomRef = useRef(appZoom)
+  zoomRef.current = appZoom
+
+  useEffect(() => {
+    async function loadSettings() {
+      const savedTheme = await api.settings.get('active_theme').catch(() => null)
+      const id = savedTheme ?? 'strawberry'
+      setActiveThemeId(id)
+      const preset = PRESET_THEMES.find(t => t.id === id)
+      if (preset) {
+        applyTheme(preset)
+      } else {
+        const raw = await api.settings.get(`theme_${id}`).catch(() => null)
+        if (raw) { try { applyTheme(JSON.parse(raw)) } catch {} }
+        else { applyTheme(PRESET_THEMES[0]) }
+      }
+
+      const savedZoom = await api.settings.get('appZoom').catch(() => null)
+      if (savedZoom) {
+        const z = parseFloat(savedZoom)
+        if (!isNaN(z)) { setAppZoom(z); resizeWindow(z) }
+      } else {
+        resizeWindow(1.0)
+      }
+
+      const savedFont = await api.settings.get('globalFont').catch(() => null)
+      if (savedFont) setGlobalFont(savedFont)
+      applyGlobalFont(savedFont ?? '')
+
+      const savedFontScale = await api.settings.get('fontScale').catch(() => null)
+      if (savedFontScale) {
+        const v = parseFloat(savedFontScale)
+        if (!isNaN(v)) { setFontScale(v); document.documentElement.style.setProperty('--font-scale', v.toString()) }
+      }
+
+      const savedFontOffsetY = await api.settings.get('fontOffsetY').catch(() => null)
+      if (savedFontOffsetY) {
+        const v = parseFloat(savedFontOffsetY)
+        if (!isNaN(v)) { setFontOffsetY(v); document.documentElement.style.setProperty('--font-offset-y', v + 'px') }
+      }
+    }
+    loadSettings()
+    api.fonts.list().then(fonts => setSystemFonts(fonts)).catch(() => {})
+  }, [])
+
+  // Scroll wheel on any range slider adjusts it
+  useEffect(() => {
+    const onWheel = (e: WheelEvent) => {
+      if (e.metaKey) return
+      const target = e.target as HTMLElement
+      if (!(target instanceof HTMLInputElement) || target.type !== 'range') return
+      e.preventDefault()
+      const step = parseFloat(target.step) || 1
+      const min = parseFloat(target.min)
+      const max = parseFloat(target.max)
+      const current = parseFloat(target.value)
+      const delta = e.deltaY < 0 ? step : -step
+      const decimals = step.toString().includes('.') ? step.toString().split('.')[1].length : 0
+      const next = parseFloat(Math.min(max, Math.max(min, Math.round((current + delta) / step) * step)).toFixed(decimals))
+      const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set
+      nativeSetter?.call(target, next.toString())
+      target.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    window.addEventListener('wheel', onWheel, { passive: false })
+    return () => window.removeEventListener('wheel', onWheel)
+  }, [])
+
+  // Cmd+scroll zoom
+  useEffect(() => {
+    const onWheel = (e: WheelEvent) => {
+      if (!e.metaKey) return
+      e.preventDefault()
+      const delta = e.deltaY > 0 ? -0.05 : 0.05
+      setAppZoom(prev => {
+        const next = Math.max(0.5, Math.min(2.0, Math.round((prev + delta) * 20) / 20))
+        api.settings.set('appZoom', next.toString()).catch(() => {})
+        resizeWindow(next)
+        return next
+      })
+    }
+    window.addEventListener('wheel', onWheel, { passive: false })
+    return () => window.removeEventListener('wheel', onWheel)
+  }, [])
+
+  const handleThemeChange = async (id: string) => {
+    setActiveThemeId(id)
+    await api.settings.set('active_theme', id).catch(() => {})
+  }
+
+  const handleZoomChange = (z: number) => {
+    setAppZoom(z)
+    api.settings.set('appZoom', z.toString()).catch(() => {})
+    resizeWindow(z)
+  }
+
+  const handleGlobalFontChange = (f: string) => {
+    setGlobalFont(f)
+    applyGlobalFont(f)
+    api.settings.set('globalFont', f).catch(() => {})
+  }
+
+  const handleFontScaleChange = (v: number) => {
+    setFontScale(v)
+    document.documentElement.style.setProperty('--font-scale', v.toString())
+    api.settings.set('fontScale', v.toString()).catch(() => {})
+  }
+
+  const handleFontOffsetYChange = (v: number) => {
+    setFontOffsetY(v)
+    document.documentElement.style.setProperty('--font-offset-y', v + 'px')
+    api.settings.set('fontOffsetY', v.toString()).catch(() => {})
+  }
+
+  return (
+    <div style={{
+      width: CANVAS_W, height: CANVAS_H,
+      transform: `scale(${appZoom})`,
+      transformOrigin: 'top left',
+      display: 'flex',
+      position: 'absolute', top: 0, left: 0,
+      background: 'transparent',
+      overflow: 'hidden',
+      borderRadius: 12,
+    }}>
+      <Sidebar
+        viewMode={nav.viewMode}
+        currentDate={nav.currentDate}
+        onViewChange={nav.setViewMode}
+        onDateSelect={nav.goToDate}
+        onThemeToggle={() => setShowSettings(v => !v)}
+        themeOpen={showSettings}
+        onSave={() => window.dispatchEvent(new CustomEvent('diary-manual-save'))}
+        onExport={() => window.dispatchEvent(new CustomEvent('diary-export-png'))}
+      />
+      <main style={{ flex: 1, overflow: 'hidden' }}>
+        {nav.viewMode === 'monthly' && (
+          <MonthlyView
+            currentDate={nav.currentDate}
+            onPrev={nav.goToPrev}
+            onNext={nav.goToNext}
+            onDayClick={(date) => { nav.goToDate(date); nav.setViewMode('daily') }}
+            onNavigate={nav.goToDate}
+          />
+        )}
+        {nav.viewMode === 'daily' && (
+          <div style={{ height: '100%', background: 'var(--color-bg)' }}>
+            <DailyView
+              currentDate={nav.currentDate}
+              onPrev={nav.goToPrev}
+              onNext={nav.goToNext}
+              onToday={() => nav.goToDate(new Date())}
+              systemFonts={systemFonts}
+              globalFont={globalFont}
+            />
+          </div>
+        )}
+      </main>
+      {showSettings && (
+        <SettingsPanel
+          activeThemeId={activeThemeId}
+          onThemeChange={handleThemeChange}
+          appZoom={appZoom}
+          onZoomChange={handleZoomChange}
+          globalFont={globalFont}
+          onGlobalFontChange={handleGlobalFontChange}
+          fontScale={fontScale}
+          onFontScaleChange={handleFontScaleChange}
+          fontOffsetY={fontOffsetY}
+          onFontOffsetYChange={handleFontOffsetYChange}
+          systemFonts={systemFonts}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+    </div>
+  )
+}
