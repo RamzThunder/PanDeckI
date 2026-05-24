@@ -20,6 +20,9 @@ export const api = {
     },
     async listMonth(yearMonth: string): Promise<string[]> {
       return invoke<string[]>('list_month_entries', { yearMonth })
+    },
+    async listMonthBgs(yearMonth: string): Promise<{ date: string; bg: string | null; bg_image: string | null }[]> {
+      return invoke('list_month_bgs', { yearMonth })
     }
   },
   monthly: {

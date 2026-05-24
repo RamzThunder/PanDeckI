@@ -1,5 +1,8 @@
 # On Diary — 프로젝트 컨텍스트
 
+## Claude 행동 규칙
+- **푸쉬 전 CLAUDE.md 동기화**: `git push` 요청이 오면, 이번 작업에서 변경된 내용(새 기능, 타입 변경, 커맨드 추가, 설정 키 추가 등)이 있을 경우 CLAUDE.md를 먼저 업데이트한 뒤 푸쉬한다.
+
 ## 앱 개요
 개인 디지털 다이어리 데스크톱 앱. 딩글(한국 다이어리 앱)과 유사한 자유 캔버스 꾸미기 스타일.
 
@@ -8,35 +11,38 @@
 - **프론트엔드**: React 18 + TypeScript + Vite (포트 1420)
 - **스타일**: Tailwind CSS v3 (ESM config — `tailwind.config.js`는 `export default` 형식)
 - **DB**: SQLite (rusqlite bundled, `src-tauri/src/db.rs`)
-- **개발 실행**: 아래 macOS 주의사항 참고
 
 ## macOS 주의사항
 - macOS 26 (Tahoe 베타, Darwin 25)에서 Electron 전 버전 동작 불가 → Tauri로 전환
-- Cargo가 PATH에 없을 수 있어서 실행 전 `export PATH="/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"` 필요
-- **iCloud Drive 주의**: 프로젝트가 iCloud Drive(`~/Library/Mobile Documents/...`) 안에 있어서 Rust `target/` 폴더를 iCloud가 동기화하려다 타임아웃 발생. 반드시 `CARGO_TARGET_DIR`을 로컬 경로로 설정해야 함
-- **올바른 실행 명령**:
+- Cargo가 PATH에 없을 수 있으므로 실행 전 export 필요
+- **iCloud Drive 주의**: `target/` 폴더를 iCloud가 동기화하려다 타임아웃 발생. `CARGO_TARGET_DIR`을 로컬로 설정
+- **올바른 실행 명령** (프로젝트 위치: `~/Desktop/on-diary`):
   ```bash
   export PATH="/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
   export CARGO_TARGET_DIR="$HOME/cargo_targets/on_diary"
   npm run tauri dev
   ```
+- 프로젝트 스킬 있음: `.claude/skills/run-app/SKILL.md` 참고
 
 ## 주요 파일 구조
 ```
 src/
-  App.tsx                  # 라우팅 (월간/일간), 테마/줌/전체폰트 로딩, Cmd+스크롤 줌
-  api.ts                   # Tauri invoke 래퍼 (entry, monthly, settings, file, sticker, fonts)
+  App.tsx                  # 라우팅(월간/일간), 테마/줌/전체폰트 로딩, Cmd+스크롤 줌
+  api.ts                   # Tauri invoke 래퍼 — 아래 api 네임스페이스 목록 참고
   store/
     diary.ts               # useDiaryNav 훅, ViewMode = 'monthly' | 'daily'
     theme.ts               # PRESET_THEMES (5종), applyTheme(), applyGlobalFont()
   pages/
-    DailyView.tsx          # 자유 캔버스 뷰 (메인 꾸미기 화면)
+    DailyView.tsx          # 자유 캔버스 뷰 (메인 꾸미기 화면, ~2300줄)
     MonthlyView.tsx        # 월간 캘린더 + 목표/버킷리스트
   components/
     Sidebar.tsx            # 좌측 사이드바 (월간/일간 탭, 설정 버튼)
-    SettingsPanel.tsx      # 우측 설정 패널 (테마/화면 탭)
+    SettingsPanel.tsx      # 우측 설정 패널 (테마/화면 탭) — 백업 버튼 포함
+    ThemePanel.tsx         # 테마 편집 패널 (SettingsPanel 내부에서 사용)
     StickerPicker.tsx      # PNG 스티커팩 피커 (폴더 기반)
     CropModal.tsx          # 사진 크롭 모달 (고정 프레임/자유형, PNG 마스크 모양)
+    TemplateModal.tsx      # 스크랩/카드 템플릿 에디터 (~2800줄)
+    MarkdownTestBox.tsx    # 마크다운 렌더 테스트 박스
 src-tauri/
   src/
     commands.rs            # Rust IPC 커맨드 전체
@@ -47,31 +53,57 @@ src-tauri/
 
 ## CanvasEl 타입 (DailyView의 캔버스 요소)
 ```typescript
-interface CanvasEl {
+export interface CanvasEl {
   id: string
-  type: 'text' | 'sticker' | 'photo'
-  x, y, w, h, z       // 위치/크기/z-order
-  rotation             // 회전 각도 (deg)
-  opacity              // 0-100
-  content              // text: 텍스트, sticker/photo: base64 data URL
+  type: 'text' | 'sticker' | 'photo' | 'card' | 'video' | 'markdown'
+  x: number; y: number; w: number; h: number; z: number
+  rotation: number       // 회전 각도 (deg)
+  opacity: number        // 0-100
+  content: string        // text: 텍스트, sticker/photo: base64 dataURL, video: URL
+
   // 텍스트 전용
-  fontSize, color, bold, italic, fontFamily
-  bgColor, bgOpacity   // 텍스트 박스 배경색 + 불투명도 (0=투명)
-  align                // 가로 정렬 (left/center/right)
-  alignV               // 세로 정렬 (top/middle/bottom)
-  textRadius           // 텍스트 박스 모서리 (px)
-  borderWidth          // 텍스트 박스 테두리 두께 (px)
-  borderColor          // 텍스트 박스 테두리 색상
+  fontSize: number; color: string; bold: boolean; italic: boolean
+  fontFamily: string
+  bgColor: string; bgOpacity: number   // 배경색 + 불투명도 (0=투명)
+  align: 'left' | 'center' | 'right'
+  alignV: 'top' | 'middle' | 'bottom'
+  textRadius: number      // 모서리 둥글기 (px)
+  borderWidth: number; borderColor: string
+
   // 사진 전용
-  clipShape            // 'none'|'circle'|'heart'|'star'|'diamond'|'hexagon'|'custom_*'
-  photoRadius          // clipShape=none일 때 모서리 둥글기 (%, 0-100)
+  clipShape: string       // 'none'|'circle'|'heart'|'star'|'diamond'|'hexagon'|'custom_*'
+  photoRadius: number     // clipShape=none일 때 모서리 둥글기 (%, 0-100)
+
+  // 비디오 전용
+  videoType?: 'embed' | 'local'   // embed: YouTube/Vimeo, local: 로컬 파일
+
+  // 카드/스크랩 전용
+  cardType?: string
+  cardData?: Record<string, string>
+  templateId?: string
+  templateData?: Record<string, any>
+
+  // 링크
+  linkUrl?: string        // 더블클릭 시 열리는 URL
+
+  // 레이아웃/그룹
+  groupId?: string        // Cmd+G로 묶인 그룹 ID
+  locked?: boolean        // 잠금 — 선택/이동 불가
+  flipH?: boolean         // 좌우 뒤집기
+  flipV?: boolean         // 상하 뒤집기
+
+  // 유령 모드
+  isGhost?: boolean       // (레거시) ghostMode로 대체
+  ghostMode?: 'exclude' | 'mosaic' | 'blur'
 }
 
-interface DailyData {
+export interface DailyData {
   elements: CanvasEl[]
-  bg: string           // 배경색 hex
-  bgImage?: string     // 배경 이미지 data URL
-  bgImageScale?: number // 배경 이미지 크기 (1.0 = 100%)
+  bg: string              // 배경색 hex
+  bgImage?: string        // 배경 이미지 data URL
+  bgImageScale?: number   // 배경 이미지 크기 (1.0 = 100%)
+  bgImageRotation?: number // 0 | 90 | 180 | 270
+  bgImageFit?: 'center' | 'cover'
 }
 ```
 
@@ -81,29 +113,43 @@ interface DailyData {
 - 줌: Cmd+스크롤 또는 설정 패널 슬라이더 (50~150%), settings DB에 영속
 
 ## 구현된 기능
-- **자유 캔버스**: 텍스트/스티커/사진 자유 배치, 드래그/리사이즈/회전
+- **자유 캔버스**: 텍스트/스티커/사진/카드/비디오/마크다운 자유 배치, 드래그/리사이즈/회전
 - **드래그**: `window.addEventListener('pointermove/pointerup')` 방식 (React synthetic event 문제 우회)
+- **마키 선택**: 빈 캔버스 드래그 → 영역 내 요소 다중 선택
+- **다중 선택/조작**: Shift+클릭, 다중 드래그/리사이즈, Cmd+G 그룹핑
 - **실행 취소/다시 실행**: 최대 50단계 히스토리, Cmd+Z / Cmd+Shift+Z, 툴바 ↩↪ 버튼
-- **텍스트**: 폰트/크기/색상/굵기/기울임/가로정렬/세로정렬/배경색(불투명도)/테두리/모서리 설정
+- **잠금**: 요소별 잠금(locked) — 선택/이동 불가, 우클릭 메뉴로 토글
+- **뒤집기**: 좌우(flipH)/상하(flipV) 반전
+- **링크**: 요소에 URL 첨부 → 더블클릭 시 브라우저로 열기
+- **텍스트**: 폰트/크기/색상/굵기/기울임/가로정렬/세로정렬/배경색(불투명도)/테두리/모서리
 - **시스템 폰트**: macOS NSFontManager로 전체 목록 (Python 경유), 검색 가능
 - **전체 폰트**: 설정 패널에서 앱 전체 폰트 변경 (`applyGlobalFont`)
-- **PNG 스티커팩**: `sticker/` 폴더 내 하위 폴더 = 팩, 자동 감지 (개발 시 프로젝트 루트 탐색)
+- **PNG 스티커팩**: `sticker/` 폴더 내 하위 폴더 = 팩, 자동 감지
 - **사진 크롭**: 고정 프레임 + 이미지 이동/줌, Canvas API로 최종 렌더
 - **사진 자유형 크롭**: 드래그로 영역 선택 → 해당 영역만 추출
 - **사진 모양**: circle/heart/star/diamond/hexagon (CSS clip-path + SVG) + PNG 마스크 커스텀 모양
-- **커스텀 모양**: PNG 업로드 → WebkitMask로 미리보기, Canvas 합성으로 저장, settings DB에 영속
-- **사진 배경색**: 크롭 모달에서 설정, 즐겨찾기 5개 (`favBgColors`) 영속
-- **배경**: 프리셋 8색 + 커스텀 3슬롯 (우클릭 삭제) + hex 입력 + 배경 이미지 (크기 조절)
+- **커스텀 모양**: PNG 업로드 → WebkitMask 미리보기, Canvas 합성 저장, settings DB에 영속
+- **사진 배경색**: 크롭 모달에서 설정, 즐겨찾기(`favBgColors`) 영속
+- **배경**: 프리셋 8색 + 커스텀 3슬롯(우클릭 삭제) + hex 입력 + 배경 이미지(크기/회전/fit)
 - **불투명도**: 요소 전체 투명도 슬라이더
+- **뒤집기**: 좌우/상하 반전
+- **유령 모드**: exclude(숨김)/mosaic(모자이크)/blur(블러) — PNG 내보내기 시 적용
+- **비디오**: YouTube/Vimeo embed(`videoType: 'embed'`) + 로컬 파일(`videoType: 'local'`)
+- **카드/스크랩**: TemplateModal로 편집하는 구조화된 카드 요소
+- **마크다운**: 마크다운 렌더링 요소 (MarkdownTestBox)
 - **클립보드 붙여넣기**: Cmd+V로 이미지→사진요소, 텍스트→텍스트요소
 - **테마**: 5 프리셋 + 5 커스텀 슬롯, CSS 변수 기반 (`--color-primary` 등)
 - **앱 줌**: Cmd+스크롤 또는 설정 슬라이더 (50~150%), settings DB에 영속
-- **월간 뷰**: 캘린더 + 목표/버킷리스트
+- **PNG 내보내기**: 캔버스를 PNG로 저장 (`save_png` 커맨드)
+- **화면 캡처**: macOS `screencapture` 경유 PNG 저장
+- **백업**: JSON으로 전체 DB 내보내기/불러오기 (트랜잭션으로 원자적 처리)
+- **월간 뷰**: 캘린더 + 목표/버킷리스트/D-Day/프로필
 - **저장**: SQLite, 날짜별 JSON 저장
 
 ## SettingsPanel 구조 (우측 패널)
 - **테마 탭**: 프리셋 5종 + 커스텀 5슬롯 (인라인 에디터) + 전체 폰트 선택
 - **화면 탭**: 줌 슬라이더 (50~150%) + 초기화 버튼
+- **백업 버튼**: 내보내기 / 불러오기 (JSON 파일)
 
 ## CropModal 동작 방식
 - **일반 모드**: 고정 프레임 (frameW × frameH), 이미지 이동/스크롤 줌
@@ -117,6 +163,20 @@ interface DailyData {
 앱 실행 시 자동으로 프로젝트 루트를 탐색해서 찾음.
 처음 실행 시 StickerPicker의 📁 버튼으로 폴더 수동 지정 가능.
 
+## api.ts 네임스페이스
+```
+api.entry      get(date), save(date, content), listMonth(ym), listMonthBgs(ym)
+api.monthly    get(ym), save(ym, data)
+api.settings   get(key), set(key, value)
+api.file       pickImage(), pickVideo(), readFileB64(path)
+api.sticker    listPacks(), getDir(), pickDir()
+api.fonts      list()
+api.shell      openUrl(url)
+api.http       fetchText(url), fetchImageB64(url)
+api.export     savePng(b64), captureScreenshot()
+api.backup     export(), import()
+```
+
 ## Settings DB 키 목록
 | 키 | 값 형식 | 설명 |
 |---|---|---|
@@ -124,16 +184,60 @@ interface DailyData {
 | `theme_{id}` | JSON (Theme) | 커스텀 테마 데이터 |
 | `appZoom` | float string | 앱 배율 |
 | `globalFont` | string | 전체 폰트명 |
+| `fontScale` | float string | 폰트 크기 배율 |
+| `fontOffsetY` | float string | 폰트 Y 오프셋 |
 | `customShapes` | JSON (CustomShape[]) | 커스텀 크롭 모양 |
 | `bgCustomColors` | JSON (string[3]) | 배경 커스텀 색 3슬롯 |
 | `favBgColors` | JSON (string[]) | 크롭 모달 배경색 즐겨찾기 |
+| `themeRecentColors` | JSON (string[]) | 최근 사용 테마 색상 |
+| `globalBucket` | JSON (BucketItem[]) | 버킷리스트 (월간 뷰) |
+| `globalDDays` | JSON (DDayItem[]) | D-Day 목록 (월간 뷰) |
+| `globalProfile` | JSON ({name,bio,photo}) | 프로필 (월간 뷰) |
+| `ghostBlurIntensity` | float string | 유령 블러 강도 |
+| `ghostMosaicIntensity` | float string | 유령 모자이크 강도 |
+| `scrap_defaults` | JSON | 스크랩 카드 기본값 |
 
 ## Rust 커맨드 목록
-`get_entry`, `save_entry`, `list_month_entries`,
-`get_monthly`, `save_monthly`, `get_setting`, `set_setting`,
-`pick_image`, `read_file_b64`,
-`get_sticker_dir`, `list_sticker_packs`, `pick_sticker_dir`,
-`list_system_fonts`
+```
+# 엔트리
+get_entry, save_entry, list_month_entries, list_month_bgs
+
+# 월간 데이터
+get_monthly, save_monthly
+
+# 설정
+get_setting, set_setting
+
+# 파일/미디어
+pick_image, pick_video, read_file_b64
+
+# 스티커
+get_sticker_dir, list_sticker_packs, pick_sticker_dir
+
+# 폰트
+list_system_fonts
+
+# 창 제어
+resize_window, window_start_dragging, window_close, window_minimize, window_toggle_maximize
+
+# 내보내기
+save_png, capture_screenshot_to
+
+# 백업
+backup_export_to, backup_import_from   ← import는 트랜잭션으로 원자적 처리
+
+# 네트워크
+fetch_text, fetch_image_b64
+
+# 기타
+open_url
+```
+
+## 성능 관련 주의사항
+- **base64 이미지**: CanvasEl의 `content`에 base64 dataURL을 저장하므로 엔트리 JSON이 매우 커질 수 있음
+- **월간 뷰 배경 로딩**: `list_month_bgs`로 SQLite `json_extract`를 써서 bg/bgImage만 추출 (풀 엔트리 로드 금지)
+- **백업 import**: 반드시 트랜잭션 안에서 처리 (개별 INSERT 시 매우 느림)
+- **DailyView persist**: 변경마다 전체 JSON을 save_entry — 불필요한 저장 최소화 필요
 
 ## 맥미니 첫 실행 체크리스트
 ```bash
@@ -144,10 +248,11 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 brew install node
 
 # 3. 의존성 설치
-cd ~/Library/Mobile\ Documents/com~apple~CloudDocs/code/on_diary
+cd ~/Desktop/on-diary
 npm install
 
 # 4. 앱 실행
-export PATH="$HOME/.cargo/bin:$PATH"
+export PATH="/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
+export CARGO_TARGET_DIR="$HOME/cargo_targets/on_diary"
 npm run tauri dev
 ```

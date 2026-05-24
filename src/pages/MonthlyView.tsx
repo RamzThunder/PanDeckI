@@ -85,17 +85,10 @@ export default function MonthlyView({ currentDate, onPrev, onNext, onDayClick, o
   const mottoKey = `monthlyMotto_${yearMonth}`
 
   useEffect(() => {
-    api.entry.listMonth(yearMonth).then(async (dates) => {
-      setEntryDates(dates)
-      const results = await Promise.all(
-        dates.map(async (d) => {
-          const entry = await api.entry.get(d).catch(() => null)
-          const raw = entry as any
-          return [d, { bg: raw?.bg, bgImage: raw?.bgImage }] as const
-        })
-      )
+    api.entry.listMonthBgs(yearMonth).then((rows) => {
+      setEntryDates(rows.map(r => r.date))
       const bgs: Record<string, DayBg> = {}
-      results.forEach(([d, b]) => { bgs[d] = b })
+      rows.forEach(r => { bgs[r.date] = { bg: r.bg ?? undefined, bgImage: r.bg_image ?? undefined } })
       setDayBgs(bgs)
     }).catch(() => {})
 

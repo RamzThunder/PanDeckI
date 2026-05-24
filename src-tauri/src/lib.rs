@@ -30,6 +30,7 @@ pub fn run() {
             commands::get_entry,
             commands::save_entry,
             commands::list_month_entries,
+            commands::list_month_bgs,
             commands::get_monthly,
             commands::save_monthly,
             commands::get_setting,

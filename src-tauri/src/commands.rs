@@ -48,6 +48,39 @@ pub fn list_month_entries(state: State<DbState>, year_month: String) -> Result<V
     Ok(dates)
 }
 
+#[derive(Serialize)]
+pub struct DayBgInfo {
+    pub date: String,
+    pub bg: Option<String>,
+    pub bg_image: Option<String>,
+}
+
+#[command]
+pub fn list_month_bgs(state: State<DbState>, year_month: String) -> Result<Vec<DayBgInfo>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let pattern = format!("{}%", year_month);
+    let mut stmt = conn
+        .prepare(
+            "SELECT date,
+                    json_extract(content, '$.bg'),
+                    json_extract(content, '$.bgImage')
+             FROM entries WHERE date LIKE ?1 ORDER BY date",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([&pattern], |row| {
+            Ok(DayBgInfo {
+                date: row.get(0)?,
+                bg: row.get(1)?,
+                bg_image: row.get(2)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
 // ── Monthly Data ──────────────────────────────────────────────────────────────
 
 #[derive(Serialize, Deserialize)]
@@ -477,52 +510,67 @@ pub fn backup_import_from(state: State<DbState>, path: String) -> Result<(), Str
 
     let conn = state.0.lock().map_err(|e| e.to_string())?;
 
-    // entries — content는 새 포맷(JSON 객체) 또는 구 포맷(문자열) 모두 처리
-    if let Some(entries) = backup["entries"].as_array() {
-        for entry in entries {
-            let date = entry["date"].as_str().unwrap_or("");
-            let content = match &entry["content"] {
-                serde_json::Value::String(s) => s.clone(),
-                val => serde_json::to_string(val).unwrap_or_else(|_| "{}".to_string()),
-            };
-            conn.execute(
-                "INSERT INTO entries (date, content, updated_at) VALUES (?1, ?2, datetime('now'))
-                 ON CONFLICT(date) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at",
-                [date, content.as_str()],
-            ).map_err(|e| e.to_string())?;
+    conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
+
+    let result = (|| -> Result<(), String> {
+        // entries — content는 새 포맷(JSON 객체) 또는 구 포맷(문자열) 모두 처리
+        if let Some(entries) = backup["entries"].as_array() {
+            for entry in entries {
+                let date = entry["date"].as_str().unwrap_or("");
+                let content = match &entry["content"] {
+                    serde_json::Value::String(s) => s.clone(),
+                    val => serde_json::to_string(val).unwrap_or_else(|_| "{}".to_string()),
+                };
+                conn.execute(
+                    "INSERT INTO entries (date, content, updated_at) VALUES (?1, ?2, datetime('now'))
+                     ON CONFLICT(date) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at",
+                    [date, content.as_str()],
+                ).map_err(|e| e.to_string())?;
+            }
+        }
+        // monthly
+        if let Some(monthly) = backup["monthly"].as_array() {
+            for m in monthly {
+                let ym = m["year_month"].as_str().unwrap_or("");
+                let g  = m["goals"].as_str().unwrap_or("[]");
+                let b  = m["bucket_list"].as_str().unwrap_or("[]");
+                let e  = m["events"].as_str().unwrap_or("[]");
+                let p  = m["profile"].as_str().unwrap_or("{}");
+                conn.execute(
+                    "INSERT INTO monthly_data (year_month, goals, bucket_list, events, profile)
+                     VALUES (?1, ?2, ?3, ?4, ?5)
+                     ON CONFLICT(year_month) DO UPDATE SET
+                       goals = excluded.goals, bucket_list = excluded.bucket_list,
+                       events = excluded.events, profile = excluded.profile",
+                    [ym, g, b, e, p],
+                ).map_err(|e| e.to_string())?;
+            }
+        }
+        // settings
+        if let Some(settings) = backup["settings"].as_array() {
+            for s in settings {
+                let k = s["key"].as_str().unwrap_or("");
+                let v = s["value"].as_str().unwrap_or("");
+                conn.execute(
+                    "INSERT INTO settings (key, value) VALUES (?1, ?2)
+                     ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    [k, v],
+                ).map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(())
+    })();
+
+    match result {
+        Ok(_) => {
+            conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+            Ok(())
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(e)
         }
     }
-    // monthly
-    if let Some(monthly) = backup["monthly"].as_array() {
-        for m in monthly {
-            let ym = m["year_month"].as_str().unwrap_or("");
-            let g  = m["goals"].as_str().unwrap_or("[]");
-            let b  = m["bucket_list"].as_str().unwrap_or("[]");
-            let e  = m["events"].as_str().unwrap_or("[]");
-            let p  = m["profile"].as_str().unwrap_or("{}");
-            conn.execute(
-                "INSERT INTO monthly_data (year_month, goals, bucket_list, events, profile)
-                 VALUES (?1, ?2, ?3, ?4, ?5)
-                 ON CONFLICT(year_month) DO UPDATE SET
-                   goals = excluded.goals, bucket_list = excluded.bucket_list,
-                   events = excluded.events, profile = excluded.profile",
-                [ym, g, b, e, p],
-            ).map_err(|e| e.to_string())?;
-        }
-    }
-    // settings
-    if let Some(settings) = backup["settings"].as_array() {
-        for s in settings {
-            let k = s["key"].as_str().unwrap_or("");
-            let v = s["value"].as_str().unwrap_or("");
-            conn.execute(
-                "INSERT INTO settings (key, value) VALUES (?1, ?2)
-                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                [k, v],
-            ).map_err(|e| e.to_string())?;
-        }
-    }
-    Ok(())
 }
 
 // ── 화면 캡처 내보내기 ─────────────────────────────────────────────────────────
