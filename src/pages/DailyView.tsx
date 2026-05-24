@@ -215,7 +215,7 @@ function getPhotoClipStyle(shape: string, customShapes: CustomShape[]): React.CS
 }
 
 function getVideoEmbedUrl(url: string): string | null {
-  const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/)
+  const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|live\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/)
   if (yt) return `https://www.youtube.com/embed/${yt[1]}?rel=0&playsinline=1`
   const vimeo = url.match(/vimeo\.com\/(\d+)/)
   if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}?playsinline=1`
@@ -1950,7 +1950,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
           const maxY = Math.max(...selEls.map(el => el.y + el.h))
           const boxW = maxX - minX, boxH = maxY - minY
 
-          const TOOLBAR_H = 44, TOOLBAR_W = 470
+          const TOOLBAR_H = 44, TOOLBAR_W = 610
           let top = maxY + 10
           if (top + TOOLBAR_H > ch - 8) top = minY - TOOLBAR_H - 10
           top = Math.max(4, top)
@@ -1966,6 +1966,29 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
           const allGrouped = selEls.length > 1 && selEls.every(el => el.groupId && el.groupId === selEls[0].groupId)
           const allLocked  = selEls.every(el => !!el.locked)
           const multiGhostMode = (selEls.every(el => getGhostMode(el) === 'exclude') ? 'exclude' : selEls.every(el => getGhostMode(el) === 'mosaic') ? 'mosaic' : selEls.every(el => getGhostMode(el) === 'blur') ? 'blur' : undefined)
+          const handleMultiLayer = (action: 'front' | 'forward' | 'backward' | 'back') => {
+            const sorted = [...dataRef.current.elements].sort((a, b) => a.z - b.z)
+            const ids = new Set(multiIds)
+            const zMap = new Map(sorted.map(el => [el.id, el.z]))
+            if (action === 'front') {
+              const nonSel = sorted.filter(el => !ids.has(el.id))
+              const sel = sorted.filter(el => ids.has(el.id))
+              nonSel.forEach((el, i) => zMap.set(el.id, i + 1))
+              sel.forEach((el, i) => zMap.set(el.id, nonSel.length + i + 1))
+            } else if (action === 'back') {
+              const nonSel = sorted.filter(el => !ids.has(el.id))
+              const sel = sorted.filter(el => ids.has(el.id))
+              sel.forEach((el, i) => zMap.set(el.id, i + 1))
+              nonSel.forEach((el, i) => zMap.set(el.id, sel.length + i + 1))
+            } else if (action === 'forward') {
+              multiIds.forEach(id => zMap.set(id, (zMap.get(id) ?? 0) + 1))
+            } else {
+              multiIds.forEach(id => zMap.set(id, Math.max(1, (zMap.get(id) ?? 1) - 1)))
+            }
+            const next = { ...dataRef.current, elements: dataRef.current.elements.map(el => ({ ...el, z: zMap.get(el.id) ?? el.z })) }
+            setData(next); persistRef.current(next)
+          }
+
           const handleGroup = () => {
             if (allGrouped) {
               const next = { ...dataRef.current, elements: dataRef.current.elements.map(el => multiIds.includes(el.id) ? { ...el, groupId: undefined } : el) }
@@ -2004,6 +2027,11 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
               {mBtn(ICONS.alignMiddle, '중간 맞춤', () => handleAlign('middle'))}
               {mBtn(ICONS.alignBottom, '아래쪽 맞춤', () => handleAlign('bottom'))}
               {mBtn(ICONS.distributeV, '세로 간격 동일', () => handleAlign('dist-y'))}
+              {sep}
+              {mBtn(ICONS.bringFront,   '맨앞으로', () => handleMultiLayer('front'))}
+              {mBtn(ICONS.bringForward, '앞으로',   () => handleMultiLayer('forward'))}
+              {mBtn(ICONS.sendBackward, '뒤로',     () => handleMultiLayer('backward'))}
+              {mBtn(ICONS.sendBack,     '맨뒤로',   () => handleMultiLayer('back'))}
               {sep}
               {mBtn(allGrouped ? ICONS.ungroup : ICONS.group, allGrouped ? '그룹 해제 (⌘G)' : '그룹화 (⌘G)', handleGroup, allGrouped)}
               {sep}

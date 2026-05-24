@@ -4,7 +4,7 @@
 - **푸쉬 전 CLAUDE.md 동기화**: `git push` 요청이 오면, 이번 작업에서 변경된 내용(새 기능, 타입 변경, 커맨드 추가, 설정 키 추가 등)이 있을 경우 CLAUDE.md를 먼저 업데이트한 뒤 푸쉬한다.
 
 ## 앱 개요
-개인 디지털 다이어리 데스크톱 앱. 딩글(한국 다이어리 앱)과 유사한 자유 캔버스 꾸미기 스타일.
+개인 디지털 다이어리 데스크톱 앱. 자유 캔버스 꾸미기 스타일.
 
 ## 기술 스택
 - **프레임워크**: Tauri 2 (Rust 백엔드 + WKWebView 프론트엔드)
@@ -116,7 +116,7 @@ export interface DailyData {
 - **자유 캔버스**: 텍스트/스티커/사진/카드/비디오/마크다운 자유 배치, 드래그/리사이즈/회전
 - **드래그**: `window.addEventListener('pointermove/pointerup')` 방식 (React synthetic event 문제 우회)
 - **마키 선택**: 빈 캔버스 드래그 → 영역 내 요소 다중 선택
-- **다중 선택/조작**: Shift+클릭, 다중 드래그/리사이즈, Cmd+G 그룹핑
+- **다중 선택/조작**: Shift+클릭, 다중 드래그/리사이즈, Cmd+G 그룹핑, 레이어 정렬(맨앞/앞/뒤/맨뒤)
 - **실행 취소/다시 실행**: 최대 50단계 히스토리, Cmd+Z / Cmd+Shift+Z, 툴바 ↩↪ 버튼
 - **잠금**: 요소별 잠금(locked) — 선택/이동 불가, 우클릭 메뉴로 토글
 - **뒤집기**: 좌우(flipH)/상하(flipV) 반전
@@ -136,7 +136,7 @@ export interface DailyData {
 - **유령 모드**: exclude(숨김)/mosaic(모자이크)/blur(블러) — PNG 내보내기 시 적용
 - **프라이버시 보호 토글**: 사이드바 알약 버튼 (`exportPrivacy` 상태, App.tsx). ON=유령모드 적용, OFF=모든 요소 원본 내보내기
 - **유령 모드 blur 내보내기**: WKWebView에서 `ctx.filter` 미작동 → 3-pass box blur (JS 픽셀 처리) + 코사인 소프트 마스크 페더링으로 구현 (`applyBlurExport`, `boxBlurH`, `boxBlurV` in DailyView.tsx)
-- **비디오**: YouTube/Vimeo embed(`videoType: 'embed'`) + 로컬 파일(`videoType: 'local'`)
+- **비디오**: YouTube/Vimeo embed(`videoType: 'embed'`) + 로컬 파일(`videoType: 'local'`). YouTube URL 인식: watch?v=, shorts/, live/, youtu.be/
 - **카드/스크랩**: TemplateModal로 편집하는 구조화된 카드 요소
 - **마크다운**: 마크다운 렌더링 요소 (MarkdownTestBox)
 - **클립보드 붙여넣기**: Cmd+V로 이미지→사진요소, 텍스트→텍스트요소
