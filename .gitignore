@@ -16,5 +16,6 @@ sticker/
 .DS_Store
 **/.DS_Store
 
-# Claude Code 로컬 설정
+# Claude Code 로컬 설정 (프로젝트 스킬은 포함)
 .claude/
+!.claude/skills/
