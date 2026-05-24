@@ -16,6 +16,7 @@ interface Props {
   globalFont: string
   mosaicIntensity: number
   blurIntensity: number
+  exportPrivacy: boolean
 }
 
 export interface CanvasEl {
@@ -94,6 +95,97 @@ function applyMosaicExport(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElem
   ctx.drawImage(smallC, px, py, pw, ph)
   ctx.restore()
 }
+// 수평 box blur (슬라이딩 윈도우, O(w*h))
+function boxBlurH(src: Uint8ClampedArray, dst: Uint8ClampedArray, w: number, h: number, r: number) {
+  const iarr = 1 / (r + r + 1)
+  for (let y = 0; y < h; y++) {
+    const base = y * w
+    let a0 = 0, a1 = 0, a2 = 0, a3 = 0
+    for (let j = -r; j <= r; j++) {
+      const xi = Math.max(0, Math.min(w - 1, j))
+      const i = (base + xi) * 4
+      a0 += src[i]; a1 += src[i+1]; a2 += src[i+2]; a3 += src[i+3]
+    }
+    for (let x = 0; x < w; x++) {
+      const idx = (base + x) * 4
+      dst[idx] = a0 * iarr; dst[idx+1] = a1 * iarr; dst[idx+2] = a2 * iarr; dst[idx+3] = a3 * iarr
+      const addIdx = (base + Math.min(w - 1, x + r + 1)) * 4
+      const remIdx = (base + Math.max(0, x - r)) * 4
+      a0 += src[addIdx] - src[remIdx]; a1 += src[addIdx+1] - src[remIdx+1]
+      a2 += src[addIdx+2] - src[remIdx+2]; a3 += src[addIdx+3] - src[remIdx+3]
+    }
+  }
+}
+// 수직 box blur
+function boxBlurV(src: Uint8ClampedArray, dst: Uint8ClampedArray, w: number, h: number, r: number) {
+  const iarr = 1 / (r + r + 1)
+  for (let x = 0; x < w; x++) {
+    let a0 = 0, a1 = 0, a2 = 0, a3 = 0
+    for (let j = -r; j <= r; j++) {
+      const yi = Math.max(0, Math.min(h - 1, j))
+      const i = (yi * w + x) * 4
+      a0 += src[i]; a1 += src[i+1]; a2 += src[i+2]; a3 += src[i+3]
+    }
+    for (let y = 0; y < h; y++) {
+      const idx = (y * w + x) * 4
+      dst[idx] = a0 * iarr; dst[idx+1] = a1 * iarr; dst[idx+2] = a2 * iarr; dst[idx+3] = a3 * iarr
+      const addIdx = (Math.min(h - 1, y + r + 1) * w + x) * 4
+      const remIdx = (Math.max(0, y - r) * w + x) * 4
+      a0 += src[addIdx] - src[remIdx]; a1 += src[addIdx+1] - src[remIdx+1]
+      a2 += src[addIdx+2] - src[remIdx+2]; a3 += src[addIdx+3] - src[remIdx+3]
+    }
+  }
+}
+// 3-pass box blur + 소프트 페더링. 캡처 영역을 r픽셀 확장 후 blur, cosine 마스크로 합성.
+function applyBlurExport(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, elX: number, elY: number, elW: number, elH: number, dpr: number, blurPx: number) {
+  const r = Math.max(1, Math.round(blurPx * dpr))
+  // 요소 물리 픽셀 경계
+  const ex = Math.floor(elX * dpr)
+  const ey = Math.floor(elY * dpr)
+  const ew = Math.ceil(elW * dpr)
+  const eh = Math.ceil(elH * dpr)
+  // r픽셀 확장 (페더링 번짐 공간)
+  const px = Math.max(0, ex - r)
+  const py = Math.max(0, ey - r)
+  const pw = Math.min(canvas.width - px, ew + 2 * r)
+  const ph = Math.min(canvas.height - py, eh + 2 * r)
+  if (pw <= 0 || ph <= 0) return
+
+  // 원본 픽셀 저장 (마스크 합성용)
+  const origData = ctx.getImageData(px, py, pw, ph)
+  const blurBuf = new Uint8ClampedArray(origData.data)
+  const tmp = new Uint8ClampedArray(blurBuf.length)
+  boxBlurH(blurBuf, tmp, pw, ph, r); boxBlurV(tmp, blurBuf, pw, ph, r)
+  boxBlurH(blurBuf, tmp, pw, ph, r); boxBlurV(tmp, blurBuf, pw, ph, r)
+  boxBlurH(blurBuf, tmp, pw, ph, r); boxBlurV(tmp, blurBuf, pw, ph, r)
+
+  // 소프트 마스크: 요소 내부=100% blur, 경계~외곽 r픽셀=cosine fade, 외부=0%
+  const orig = origData.data
+  for (let y = 0; y < ph; y++) {
+    for (let x = 0; x < pw; x++) {
+      const cx = px + x, cy = py + y
+      // 요소 경계까지의 부호 있는 거리 (양수=내부, 음수=외부)
+      const dx = Math.min(cx - ex, ex + ew - 1 - cx)
+      const dy = Math.min(cy - ey, ey + eh - 1 - cy)
+      const dist = Math.min(dx, dy)
+      const a = dist >= 0 ? 1 : dist <= -r ? 0 : 0.5 + 0.5 * Math.cos(Math.PI * (-dist) / r)
+      const i = (y * pw + x) * 4
+      orig[i]   = blurBuf[i]   * a + orig[i]   * (1 - a)
+      orig[i+1] = blurBuf[i+1] * a + orig[i+1] * (1 - a)
+      orig[i+2] = blurBuf[i+2] * a + orig[i+2] * (1 - a)
+      orig[i+3] = blurBuf[i+3] * a + orig[i+3] * (1 - a)
+    }
+  }
+
+  const tmpC = document.createElement('canvas')
+  tmpC.width = pw; tmpC.height = ph
+  tmpC.getContext('2d')!.putImageData(origData, 0, 0)
+  ctx.save()
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.drawImage(tmpC, px, py)
+  ctx.restore()
+}
+
 const BG_COLORS = ['#FFF8F0','#FDE8F0','#E8F4E8','#E8F0FF','#FFF4E8','#F0F8FF','#FFFFFF','#F5F5F5']
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -446,7 +538,7 @@ function InteractiveOverlay({ url, cmdHeld }: { url: string; cmdHeld: boolean })
   )
 }
 
-export default function DailyView({ currentDate, onPrev, onNext, onToday, systemFonts, globalFont, mosaicIntensity, blurIntensity }: Props): JSX.Element {
+export default function DailyView({ currentDate, onPrev, onNext, onToday, systemFonts, globalFont, mosaicIntensity, blurIntensity, exportPrivacy }: Props): JSX.Element {
   const dateStr = toLocalDate(currentDate)
   const [data, setData] = useState<DailyData>(DEFAULT_DATA)
   const [saved, setSaved] = useState(false)
@@ -483,6 +575,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
 
   const [showGrid, setShowGrid] = useState(false)
   const [useSnap,  setUseSnap]  = useState(false)
+  const [ghostPreview, setGhostPreview] = useState(true)
   const snapRef = useRef(false)
   useEffect(() => { snapRef.current = useSnap }, [useSnap])
 
@@ -690,12 +783,11 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
         ctx.restore()
       } catch {}
     }
-    for (const el of [...d.elements].filter(el => getGhostMode(el) !== 'exclude').sort((a, b) => a.z - b.z)) {
+    for (const el of [...d.elements].filter(el => !exportPrivacy || getGhostMode(el) !== 'exclude').sort((a, b) => a.z - b.z)) {
       if (el.type === 'video') continue
-      const gm = getGhostMode(el)
+      const gm = exportPrivacy ? getGhostMode(el) : undefined
       ctx.save()
       ctx.globalAlpha = el.opacity / 100
-      if (gm === 'blur') ctx.filter = `blur(${blurIntensity}px)`
       ctx.translate(el.x + el.w / 2, el.y + el.h / 2)
       ctx.rotate((el.rotation * Math.PI) / 180)
       ctx.translate(-el.w / 2, -el.h / 2)
@@ -775,10 +867,11 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
       }
       ctx.restore()
       if (gm === 'mosaic') applyMosaicExport(ctx, offscreen, el.x, el.y, el.w, el.h, dpr, mosaicIntensity)
+      if (gm === 'blur')   applyBlurExport(ctx, offscreen, el.x, el.y, el.w, el.h, dpr, blurIntensity)
     }
     const b64 = offscreen.toDataURL('image/png').split(',')[1]
     await api.export.savePng(b64)
-  }, [customShapes])
+  }, [customShapes, exportPrivacy])
   exportRef.current = exportToPNG
 
   useEffect(() => {
@@ -1593,6 +1686,13 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
           style={{ width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: `1px solid ${useSnap ? 'var(--color-primary)' : 'var(--color-border)'}`, background: useSnap ? 'var(--color-primary-light)' : 'transparent', color: useSnap ? 'var(--color-primary-dark)' : 'var(--color-text-muted)', cursor: 'pointer' }}>
           <span style={{ display: 'flex', transform: 'scale(0.78)', transformOrigin: 'center' }}>{ICONS.magnet}</span>
         </button>
+        <button onClick={() => setGhostPreview(v => !v)} title={ghostPreview ? '유령 미리보기 끄기' : '유령 미리보기 켜기'}
+          style={{ width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: `1px solid ${ghostPreview ? 'var(--color-primary)' : 'var(--color-border)'}`, background: ghostPreview ? 'var(--color-primary-light)' : 'transparent', color: ghostPreview ? 'var(--color-primary-dark)' : 'var(--color-text-muted)', cursor: 'pointer' }}>
+          {ghostPreview
+            ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"/><path d="M9 10h.01M15 10h.01" strokeWidth="3"/><path d="M9.5 13 Q12 16 14.5 13"/></svg>
+            : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"/><path d="M9 9l6 2m0-2l-6 2"/><path d="M10.5 14h3"/></svg>
+          }
+        </button>
       </div>
 
       {/* Canvas */}
@@ -1677,7 +1777,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                 borderRadius: el.type === 'photo'
                   ? (el.clipShape === 'none' ? `${el.photoRadius ?? 0}%` : 0)
                   : (el.type === 'text' || el.type === 'markdown') ? `${textRad}px` : 0,
-                filter: gm === 'blur' ? `blur(${blurIntensity}px)` : gm === 'mosaic' ? "url('#pixelate-filter')" : undefined,
+                filter: ghostPreview && gm === 'blur' ? `blur(${blurIntensity}px)` : ghostPreview && gm === 'mosaic' ? "url('#pixelate-filter')" : undefined,
               }}>
                 {el.type === 'text' && (
                   isEdit ? (
@@ -1809,7 +1909,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
         })}
 
         {/* Ghost mode outlines — rendered above all elements */}
-        {[...data.elements].map(el => {
+        {ghostPreview && [...data.elements].map(el => {
           const gm = getGhostMode(el)
           if (!gm || el.id === selectedId || multiIds.includes(el.id)) return null
           return (

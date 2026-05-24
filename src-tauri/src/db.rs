@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 pub struct DbState(pub Mutex<Connection>);
+pub struct DbPathState(pub Mutex<PathBuf>);
 
 impl DbState {
     pub fn new(db_path: PathBuf) -> Self {

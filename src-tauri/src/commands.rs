@@ -1,4 +1,4 @@
-use crate::db::DbState;
+use crate::db::{DbPathState, DbState};
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -571,6 +571,40 @@ pub fn backup_import_from(state: State<DbState>, path: String) -> Result<(), Str
             Err(e)
         }
     }
+}
+
+// ── 저장 위치 관리 ────────────────────────────────────────────────────────────
+
+#[command]
+pub fn get_db_path(state: State<DbPathState>) -> String {
+    state.0.lock().unwrap().to_string_lossy().to_string()
+}
+
+#[command]
+pub async fn pick_db_dir(app: AppHandle, path_state: State<'_, DbPathState>) -> Result<String, String> {
+    let folder = app.dialog().file().blocking_pick_folder()
+        .ok_or_else(|| "취소됨".to_string())?;
+    let new_dir = PathBuf::from(folder.to_string());
+    let new_db_path = new_dir.join("diary.db");
+
+    // 현재 DB 파일을 새 위치로 복사
+    let current = path_state.0.lock().map_err(|e| e.to_string())?.clone();
+    fs::copy(&current, &new_db_path).map_err(|e| format!("복사 실패: {e}"))?;
+
+    // config 파일에 새 경로 저장
+    let config = app.path().app_data_dir().map_err(|e| e.to_string())?.join("db_path.txt");
+    fs::write(&config, new_db_path.to_string_lossy().as_bytes()).map_err(|e| e.to_string())?;
+
+    Ok(new_db_path.to_string_lossy().to_string())
+}
+
+#[command]
+pub fn reset_db_path(app: AppHandle) -> Result<(), String> {
+    let config = app.path().app_data_dir().map_err(|e| e.to_string())?.join("db_path.txt");
+    if config.exists() {
+        fs::remove_file(&config).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 // ── 화면 캡처 내보내기 ─────────────────────────────────────────────────────────

@@ -1,7 +1,33 @@
 mod db;
 mod commands;
 
+use std::path::PathBuf;
 use tauri::Manager;
+
+fn resolve_db_path(app: &tauri::App) -> PathBuf {
+    let app_data = app.path().app_data_dir().expect("no app data dir");
+    std::fs::create_dir_all(&app_data).ok();
+
+    // 커스텀 경로가 config 파일에 저장돼 있으면 우선 사용
+    let config_path = app_data.join("db_path.txt");
+    if let Ok(raw) = std::fs::read_to_string(&config_path) {
+        let p = PathBuf::from(raw.trim());
+        if p.parent().map(|d| d.exists()).unwrap_or(false) {
+            return p;
+        }
+    }
+
+    // 기본값: iCloud → App Support 폴백
+    let icloud_dir = dirs::home_dir()
+        .expect("no home dir")
+        .join("Library/Mobile Documents/com~apple~CloudDocs/on_diary_data");
+    let db_dir = if std::fs::create_dir_all(&icloud_dir).is_ok() {
+        icloud_dir
+    } else {
+        app_data
+    };
+    db_dir.join("diary.db")
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -9,20 +35,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
-            // iCloud Drive에 저장해서 다른 기기와 동기화
-            let icloud_dir = dirs::home_dir()
-                .expect("no home dir")
-                .join("Library/Mobile Documents/com~apple~CloudDocs/on_diary_data");
-            let db_dir = if std::fs::create_dir_all(&icloud_dir).is_ok() {
-                icloud_dir
-            } else {
-                // iCloud 사용 불가 시 App Support로 폴백
-                let fallback = app.path().app_data_dir()?;
-                std::fs::create_dir_all(&fallback)?;
-                fallback
-            };
-            let db_path = db_dir.join("diary.db");
+            let db_path = resolve_db_path(app);
             db::setup_database(&db_path)?;
+            app.manage(db::DbPathState(std::sync::Mutex::new(db_path.clone())));
             app.manage(db::DbState::new(db_path));
             Ok(())
         })
@@ -53,6 +68,9 @@ pub fn run() {
             commands::capture_screenshot_to,
             commands::backup_export_to,
             commands::backup_import_from,
+            commands::get_db_path,
+            commands::pick_db_dir,
+            commands::reset_db_path,
             commands::open_url,
         ])
         .run(tauri::generate_context!())

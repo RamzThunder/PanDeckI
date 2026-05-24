@@ -26,6 +26,7 @@ export default function App(): JSX.Element {
   const [fontOffsetY, setFontOffsetY] = useState(0)
   const [mosaicIntensity, setMosaicIntensity] = useState(14)
   const [blurIntensity, setBlurIntensity] = useState(12)
+  const [exportPrivacy, setExportPrivacy] = useState(true)
 
   const zoomRef = useRef(appZoom)
   zoomRef.current = appZoom
@@ -176,6 +177,8 @@ export default function App(): JSX.Element {
         themeOpen={showSettings}
         onSave={() => window.dispatchEvent(new CustomEvent('diary-manual-save'))}
         onExport={() => window.dispatchEvent(new CustomEvent('diary-export-png'))}
+        exportPrivacy={exportPrivacy}
+        onPrivacyToggle={() => setExportPrivacy(v => !v)}
       />
       <main style={{ flex: 1, overflow: 'hidden' }}>
         {nav.viewMode === 'monthly' && (
@@ -198,6 +201,7 @@ export default function App(): JSX.Element {
               globalFont={globalFont}
               mosaicIntensity={mosaicIntensity}
               blurIntensity={blurIntensity}
+              exportPrivacy={exportPrivacy}
             />
           </div>
         )}

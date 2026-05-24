@@ -103,5 +103,16 @@ export const api = {
       const filePath = Array.isArray(path) ? path[0] : path
       await invoke('backup_import_from', { path: filePath })
     }
+  },
+  db: {
+    async getPath(): Promise<string> {
+      return invoke<string>('get_db_path')
+    },
+    async pickDir(): Promise<string> {
+      return invoke<string>('pick_db_dir')
+    },
+    async resetPath(): Promise<void> {
+      await invoke('reset_db_path')
+    }
   }
 }

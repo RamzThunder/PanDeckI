@@ -13,6 +13,8 @@ interface Props {
   themeOpen: boolean
   onSave: () => void
   onExport: () => void
+  exportPrivacy: boolean
+  onPrivacyToggle: () => void
 }
 
 const ICONS = {
@@ -46,13 +48,13 @@ const TrafficLight = ({ color, hoverColor, onClick }: { color: string; hoverColo
   )
 }
 
-export default function Sidebar({ viewMode, currentDate, onViewChange, onThemeToggle, themeOpen, onSave, onExport }: Props): JSX.Element {
+export default function Sidebar({ viewMode, currentDate, onViewChange, onThemeToggle, themeOpen, onSave, onExport, exportPrivacy, onPrivacyToggle }: Props): JSX.Element {
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth() + 1
 
   return (
     <aside
-      className="w-16 flex flex-col items-center shrink-0 gap-[3px]"
+      className="w-16 flex flex-col items-center shrink-0 gap-2"
       style={{ background: 'var(--color-sidebar)', borderRight: '1px solid var(--color-border)' }}
     >
       {/* 드래그 가능한 트래픽라이트 영역 */}
@@ -80,26 +82,43 @@ export default function Sidebar({ viewMode, currentDate, onViewChange, onThemeTo
         <button
           key={v.id}
           onClick={() => onViewChange(v.id)}
-          className="w-10 h-10 rounded-xl flex flex-col items-center justify-center text-xs gap-0.5 transition-all"
+          title={v.label}
+          className="w-11 h-11 rounded-xl flex items-center justify-center transition-all"
           style={{
             background: viewMode === v.id ? 'var(--color-primary)' : 'transparent',
             color: viewMode === v.id ? '#fff' : 'var(--color-text-muted)'
           }}
         >
-          <span style={{ display: 'flex', transform: 'scale(0.72)', transformOrigin: 'center', marginBottom: -5 }}>{v.icon}</span>
-          <span style={{ fontSize: 'calc(9px * var(--font-scale, 1))', position: 'relative', top: 'var(--font-offset-y, 0px)' }}>{v.label}</span>
+          {v.icon}
         </button>
       ))}
 
       {/* 내보내기 버튼 */}
       <button
         onClick={onExport}
-        className="w-10 h-10 rounded-xl flex flex-col items-center justify-center text-xs gap-0.5 transition-all mt-1"
+        className="w-11 h-11 rounded-xl flex items-center justify-center transition-all mt-1"
         style={{ background: 'transparent', color: 'var(--color-text-muted)' }}
         title="PNG로 내보내기"
       >
-        <span style={{ display: 'flex', transform: 'scale(0.72)', transformOrigin: 'center', marginBottom: -5 }}>{ICONS.export}</span>
-        <span style={{ fontSize: 'calc(9px * var(--font-scale, 1))', position: 'relative', top: 'var(--font-offset-y, 0px)' }}>내보내기</span>
+        {ICONS.export}
+      </button>
+
+      {/* 프라이버시 토글 */}
+      <button
+        onClick={onPrivacyToggle}
+        title={exportPrivacy ? '프라이버시 보호 필터 ON — 클릭하여 끄기' : '프라이버시 보호 필터 OFF — 클릭하여 켜기'}
+        style={{
+          width: 48, height: 18, borderRadius: 9,
+          fontSize: 9, fontWeight: 700, letterSpacing: '0.02em',
+          cursor: 'pointer', border: 'none', outline: 'none',
+          transition: 'background 0.2s, color 0.2s',
+          background: exportPrivacy ? 'var(--color-primary)' : 'transparent',
+          color: exportPrivacy ? '#fff' : 'var(--color-text-muted)',
+          boxShadow: exportPrivacy ? 'none' : 'inset 0 0 0 1px var(--color-border)',
+          flexShrink: 0,
+        }}
+      >
+        {exportPrivacy ? '필터 켜짐' : '필터 꺼짐'}
       </button>
 
       <div className="flex-1" style={{ width: '100%', cursor: 'move' }} onMouseDown={startDrag} />
@@ -107,25 +126,23 @@ export default function Sidebar({ viewMode, currentDate, onViewChange, onThemeTo
       {/* 수동 저장 버튼 (설정 버튼 위) */}
       <button
         onClick={onSave}
-        className="w-10 h-10 rounded-xl flex flex-col items-center justify-center text-xs gap-0.5 transition-all mb-1"
+        className="w-11 h-11 rounded-xl flex items-center justify-center transition-all mb-1"
         style={{ background: 'transparent', color: 'var(--color-text-muted)' }}
         title="저장"
       >
-        <span style={{ display: 'flex', transform: 'scale(0.72)', transformOrigin: 'center', marginBottom: -5 }}>{ICONS.save}</span>
-        <span style={{ fontSize: 'calc(9px * var(--font-scale, 1))', position: 'relative', top: 'var(--font-offset-y, 0px)' }}>저장</span>
+        {ICONS.save}
       </button>
 
       <button
         onClick={onThemeToggle}
-        className="w-10 h-10 rounded-xl flex flex-col items-center justify-center text-xs gap-0.5 transition-all mb-4"
+        className="w-11 h-11 rounded-xl flex items-center justify-center transition-all mb-4"
         style={{
           background: themeOpen ? 'var(--color-primary)' : 'transparent',
           color: themeOpen ? '#fff' : 'var(--color-text-muted)'
         }}
         title="설정"
       >
-        <span style={{ display: 'flex', transform: 'scale(0.72)', transformOrigin: 'center', marginBottom: -5 }}>{ICONS.settings}</span>
-        <span style={{ fontSize: 'calc(9px * var(--font-scale, 1))', position: 'relative', top: 'var(--font-offset-y, 0px)' }}>설정</span>
+        {ICONS.settings}
       </button>
     </aside>
   )

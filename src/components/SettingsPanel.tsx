@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 import { Theme, PRESET_THEMES, applyTheme, applyGlobalFont } from '../store/theme'
 import { api } from '../api'
 
@@ -94,6 +95,8 @@ export default function SettingsPanel({
   const [recentColors, setRecentColors] = useState<Record<string, string[]>>({})
   const [allDefaults, setAllDefaults] = useState<Record<string, Record<string, string>>>({})
   const [selectedScrapTpl, setSelectedScrapTpl] = useState<string | null>(null)
+  const [dbPath, setDbPath] = useState('')
+  const [dbPending, setDbPending] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -109,6 +112,9 @@ export default function SettingsPanel({
 
       const rawScrap = await api.settings.get('scrap_defaults').catch(() => null)
       if (rawScrap) try { setAllDefaults(JSON.parse(rawScrap)) } catch {}
+
+      const path = await api.db.getPath().catch(() => '')
+      setDbPath(path)
     }
     load()
   }, [])
@@ -158,7 +164,7 @@ export default function SettingsPanel({
     : systemFonts
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end" onClick={onClose}>
+    <div className="fixed inset-0 flex justify-end" style={{ zIndex: 999999 }} onClick={onClose}>
       <div className="w-72 h-full overflow-y-auto shadow-2xl flex flex-col"
         style={{ background: 'var(--color-bg)', borderLeft: '1px solid var(--color-border)' }}
         onClick={e => e.stopPropagation()}>
@@ -373,6 +379,48 @@ export default function SettingsPanel({
                   </div>
                 </div>
               </div>
+            </section>
+
+            <section>
+              <p className="text-xs font-semibold mb-3" style={{ color: 'var(--color-text-muted)' }}>저장 위치</p>
+              <div className="rounded-xl px-3 py-2 mb-2 text-xs break-all" style={{ background: 'var(--color-primary-light)', color: 'var(--color-text)' }}>
+                {dbPath || '불러오는 중…'}
+              </div>
+              <div className="flex gap-2 mb-2">
+                <button
+                  className="flex-1 text-xs py-2 rounded-xl hover:opacity-80 font-medium"
+                  style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}
+                  onClick={async () => {
+                    try {
+                      const newPath = await api.db.pickDir()
+                      setDbPath(newPath)
+                      setDbPending(true)
+                    } catch {}
+                  }}>
+                  위치 변경
+                </button>
+                <button
+                  className="flex-1 text-xs py-2 rounded-xl hover:opacity-80 font-medium"
+                  style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}
+                  onClick={async () => {
+                    await api.db.resetPath().catch(() => {})
+                    const path = await api.db.getPath().catch(() => '')
+                    setDbPath(path)
+                    setDbPending(true)
+                  }}>
+                  기본값으로
+                </button>
+              </div>
+              {dbPending && (
+                <div className="rounded-xl px-3 py-2 flex items-center justify-between gap-2"
+                  style={{ background: 'var(--color-primary)', color: '#fff' }}>
+                  <span className="text-xs">재시작 후 적용돼요.</span>
+                  <button className="text-xs font-semibold underline hover:opacity-80"
+                    onClick={() => { invoke('window_close') }}>
+                    지금 종료
+                  </button>
+                </div>
+              )}
             </section>
 
             <section>

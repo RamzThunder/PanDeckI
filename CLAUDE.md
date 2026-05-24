@@ -134,6 +134,8 @@ export interface DailyData {
 - **불투명도**: 요소 전체 투명도 슬라이더
 - **뒤집기**: 좌우/상하 반전
 - **유령 모드**: exclude(숨김)/mosaic(모자이크)/blur(블러) — PNG 내보내기 시 적용
+- **프라이버시 보호 토글**: 사이드바 알약 버튼 (`exportPrivacy` 상태, App.tsx). ON=유령모드 적용, OFF=모든 요소 원본 내보내기
+- **유령 모드 blur 내보내기**: WKWebView에서 `ctx.filter` 미작동 → 3-pass box blur (JS 픽셀 처리) + 코사인 소프트 마스크 페더링으로 구현 (`applyBlurExport`, `boxBlurH`, `boxBlurV` in DailyView.tsx)
 - **비디오**: YouTube/Vimeo embed(`videoType: 'embed'`) + 로컬 파일(`videoType: 'local'`)
 - **카드/스크랩**: TemplateModal로 편집하는 구조화된 카드 요소
 - **마크다운**: 마크다운 렌더링 요소 (MarkdownTestBox)
@@ -145,6 +147,12 @@ export interface DailyData {
 - **백업**: JSON으로 전체 DB 내보내기/불러오기 (트랜잭션으로 원자적 처리)
 - **월간 뷰**: 캘린더 + 목표/버킷리스트/D-Day/프로필
 - **저장**: SQLite, 날짜별 JSON 저장
+
+## Sidebar 구조
+- 아이콘만 표시 (텍스트 없음), 24px 아이콘, 44px 버튼
+- 상단: 트래픽라이트 → 연/월 → 월간/일간 탭 → 내보내기 → 프라이버시 토글 알약
+- 하단: 저장 → 설정
+- 프라이버시 토글: 48×18px 알약, ON=primary-dark 배경+흰글씨, OFF=투명+border
 
 ## SettingsPanel 구조 (우측 패널)
 - **테마 탭**: 프리셋 5종 + 커스텀 5슬롯 (인라인 에디터) + 전체 폰트 선택
