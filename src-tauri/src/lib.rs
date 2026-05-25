@@ -45,7 +45,7 @@ fn handle_youtube_proxy(mut stream: std::net::TcpStream) {
         .collect();
 
     let html = format!(
-        r#"<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{{margin:0;padding:0;box-sizing:border-box}}html,body{{width:100%;height:100%;background:#000}}</style></head><body><iframe src="https://www.youtube.com/embed/{safe_id}?rel=0&playsinline=1" width="100%" height="100%" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></body></html>"#
+        r#"<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{{margin:0;padding:0;box-sizing:border-box}}html,body{{width:100%;height:100%;background:#000;overflow:hidden}}</style></head><body><iframe src="https://www.youtube.com/embed/{safe_id}?rel=0&playsinline=1" width="100%" height="100%" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></body></html>"#
     );
     let resp = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
