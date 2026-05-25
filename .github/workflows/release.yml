@@ -9,9 +9,11 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  build-macos:
     runs-on: macos-latest
-
+    outputs:
+      tar_name: ${{ steps.info.outputs.tar_name }}
+      tar_sig: ${{ steps.info.outputs.tar_sig }}
     steps:
       - uses: actions/checkout@v4
 
@@ -28,66 +30,142 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
-      - name: Install dependencies
-        run: npm install
+      - run: npm install
 
-      - name: Build Tauri app
+      - name: Build (macOS aarch64)
         run: npx tauri build --target aarch64-apple-darwin
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
 
+      - id: info
+        run: |
+          BUNDLE="src-tauri/target/aarch64-apple-darwin/release/bundle"
+          TAR=$(find "$BUNDLE/macos" -name "*.app.tar.gz" | head -1)
+          echo "tar_name=$(basename $TAR)" >> $GITHUB_OUTPUT
+          echo "tar_sig=$(cat ${TAR}.sig)" >> $GITHUB_OUTPUT
+
+      - name: Stage artifacts
+        run: |
+          mkdir -p staging
+          cp "$(find src-tauri/target/aarch64-apple-darwin/release/bundle/dmg -name '*.dmg' | head -1)" staging/
+          cp "$(find src-tauri/target/aarch64-apple-darwin/release/bundle/macos -name '*.app.tar.gz' | head -1)" staging/
+          cp "$(find src-tauri/target/aarch64-apple-darwin/release/bundle/macos -name '*.app.tar.gz.sig' | head -1)" staging/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-artifacts
+          path: staging/
+
+  build-windows:
+    runs-on: windows-latest
+    outputs:
+      win_zip_name: ${{ steps.info.outputs.win_zip_name }}
+      win_sig: ${{ steps.info.outputs.win_sig }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - run: npm install
+
+      - name: Build (Windows x86_64)
+        run: npx tauri build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+
+      - id: info
+        shell: bash
+        run: |
+          BUNDLE="src-tauri/target/release/bundle"
+          ZIP=$(find "$BUNDLE/nsis" -name "*.nsis.zip" 2>/dev/null | head -1)
+          [ -z "$ZIP" ] && ZIP=$(find "$BUNDLE/msi" -name "*.msi.zip" 2>/dev/null | head -1)
+          if [ -z "$ZIP" ]; then echo "ERROR: no updater zip found"; exit 1; fi
+          echo "win_zip_name=$(basename $ZIP)" >> $GITHUB_OUTPUT
+          echo "win_sig=$(cat ${ZIP}.sig)" >> $GITHUB_OUTPUT
+
+      - name: Stage artifacts
+        shell: bash
+        run: |
+          mkdir -p staging
+          BUNDLE="src-tauri/target/release/bundle"
+          for ext in "*.exe" "*.nsis.zip" "*.nsis.zip.sig" "*.msi" "*.msi.zip" "*.msi.zip.sig"; do
+            find "$BUNDLE" -name "$ext" -exec cp {} staging/ \; 2>/dev/null || true
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: staging/
+
+  release:
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-artifacts
+          path: artifacts/macos
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-artifacts
+          path: artifacts/windows
+
       - name: Create release and upload
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASES_PAT: ${{ secrets.RELEASES_PAT }}
         run: |
           set -euo pipefail
 
           TAG="${{ github.ref_name }}"
-          BUNDLE_DIR="src-tauri/target/aarch64-apple-darwin/release/bundle"
-
-          echo "=== Bundle directory contents ==="
-          find "$BUNDLE_DIR" -type f 2>/dev/null || echo "BUNDLE_DIR not found"
-
-          DMG=$(find "$BUNDLE_DIR/dmg" -name "*.dmg" | head -1)
-          TAR=$(find "$BUNDLE_DIR/macos" -name "*.app.tar.gz" | head -1)
-
-          if [ -z "$DMG" ]; then
-            echo "ERROR: DMG not found"; exit 1
-          fi
-          if [ -z "$TAR" ]; then
-            echo "ERROR: .app.tar.gz not found — check createUpdaterArtifacts: true in tauri.conf.json"; exit 1
-          fi
-          if [ ! -f "${TAR}.sig" ]; then
-            echo "ERROR: .sig not found at ${TAR}.sig"; exit 1
-          fi
-
-          TAR_NAME=$(basename "$TAR")
-          SIG=$(cat "${TAR}.sig")
           VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          URL="https://github.com/RamzThunder/on-diary/releases/download/${TAG}/${TAR_NAME}"
+          BASE_URL="https://github.com/RamzThunder/dida-releases/releases/download/${TAG}"
 
-          echo "DMG: $DMG"
-          echo "TAR: $TAR"
-          echo "SIG: ${TAR}.sig"
-          echo "VERSION: $VERSION"
+          MAC_TAR="${{ needs.build-macos.outputs.tar_name }}"
+          MAC_SIG="${{ needs.build-macos.outputs.tar_sig }}"
+          WIN_ZIP="${{ needs.build-windows.outputs.win_zip_name }}"
+          WIN_SIG="${{ needs.build-windows.outputs.win_sig }}"
+
+          echo "=== Artifacts ==="
+          ls artifacts/macos/ artifacts/windows/
 
           jq -n \
             --arg version "$VERSION" \
             --arg notes "dida 새 버전이 업데이트되었습니다." \
             --arg pub_date "$DATE" \
-            --arg sig "$SIG" \
-            --arg url "https://github.com/RamzThunder/dida-releases/releases/download/${TAG}/${TAR_NAME}" \
-            '{"version":$version,"notes":$notes,"pub_date":$pub_date,"platforms":{"darwin-aarch64":{"signature":$sig,"url":$url}}}' \
-            > latest.json
+            --arg mac_sig "$MAC_SIG" \
+            --arg mac_url "${BASE_URL}/${MAC_TAR}" \
+            --arg win_sig "$WIN_SIG" \
+            --arg win_url "${BASE_URL}/${WIN_ZIP}" \
+            '{"version":$version,"notes":$notes,"pub_date":$pub_date,"platforms":{
+              "darwin-aarch64":{"signature":$mac_sig,"url":$mac_url},
+              "windows-x86_64":{"signature":$win_sig,"url":$win_url}
+            }}' > latest.json
 
+          echo "=== latest.json ==="
           cat latest.json
 
-          # 기존 릴리즈 있으면 삭제 (force-push 재빌드 대응)
-          GH_TOKEN="${{ secrets.RELEASES_PAT }}" gh release delete "$TAG" \
+          GH_TOKEN="${RELEASES_PAT}" gh release delete "$TAG" \
             --repo RamzThunder/dida-releases --yes 2>/dev/null || true
 
-          GH_TOKEN="${{ secrets.RELEASES_PAT }}" gh release create "$TAG" "$DMG" "$TAR" "${TAR}.sig" latest.json \
+          GH_TOKEN="${RELEASES_PAT}" gh release create "$TAG" \
+            artifacts/macos/*.dmg \
+            artifacts/macos/*.app.tar.gz \
+            artifacts/macos/*.app.tar.gz.sig \
+            artifacts/windows/* \
+            latest.json \
             --repo RamzThunder/dida-releases \
             --title "dida $TAG" \
             --notes "dida 새 버전이 출시되었습니다."

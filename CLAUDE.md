@@ -124,7 +124,7 @@ export interface DailyData {
 - **뒤집기**: 좌우(flipH)/상하(flipV) 반전
 - **링크**: 요소에 URL 첨부 → 더블클릭 시 브라우저로 열기
 - **텍스트**: 폰트/크기/색상/굵기/기울임/가로정렬/세로정렬/배경색(불투명도)/테두리/모서리
-- **시스템 폰트**: macOS NSFontManager로 전체 목록 (Python 경유), 검색 가능
+- **시스템 폰트**: macOS=NSFontManager(Python 경유), Windows=PowerShell+InstalledFontCollection, 검색 가능
 - **전체 폰트**: 설정 패널에서 앱 전체 폰트 변경 (`applyGlobalFont`)
 - **PNG 스티커팩**: `sticker/` 폴더 내 하위 폴더 = 팩, 자동 감지
 - **사진 크롭**: 고정 프레임 + 이미지 이동/줌, Canvas API로 최종 렌더
@@ -146,7 +146,7 @@ export interface DailyData {
 - **테마**: 4 프리셋(하늘색·딸기핑크·흑백·다크, 기본=하늘색) + 5 커스텀 슬롯(삭제 가능), CSS 변수 기반 (`--color-primary` 등)
 - **앱 줌**: Cmd+스크롤 또는 설정 슬라이더 (50~150%), settings DB에 영속
 - **PNG 내보내기**: 캔버스를 PNG로 저장 (`save_png` 커맨드)
-- **화면 캡처**: Python Quartz로 CGWindowID 획득 → `screencapture -l <wid> -x` 로 그림자 포함 알파채널 PNG 캡처 (투명 코너 + 네이티브 그림자 보존)
+- **화면 캡처**: macOS=Python Quartz로 CGWindowID → `screencapture -l <wid> -x` (그림자 포함 알파채널). Windows=PowerShell PrintWindow(Win32 API). 둘 다 지역 캡처 폴백 있음
 - **백업**: JSON으로 전체 DB 내보내기/불러오기 (트랜잭션으로 원자적 처리)
 - **월간 뷰**: 캘린더 + 목표/버킷리스트/D-Day/프로필
 - **저장**: SQLite, 날짜별 JSON 저장
@@ -249,16 +249,26 @@ open_url
 - **방식**: GitHub Releases + `tauri-plugin-updater` (서명 키 기반, Apple 개발자 계정 불필요)
 - **서명 키**: `~/.tauri/on-diary.key` (로컬), 공개키는 `tauri.conf.json`에 포함
 - **GitHub Secret**: `TAURI_SIGNING_PRIVATE_KEY` (비밀번호 없음)
-- **릴리즈 방법**: 버전 태그 푸쉬 → GitHub Actions 자동 빌드 (ARM64 + x86_64)
+- **릴리즈 방법**: 버전 태그 푸쉬 → GitHub Actions 자동 빌드 (macOS aarch64 + Windows x86_64 병렬)
   ```bash
   # 1. package.json / tauri.conf.json 버전 올리기
   # 2. 커밋 후 태그 푸쉬
   git tag v1.0.1
   git push origin v1.0.1
   ```
-- **엔드포인트**: `https://github.com/RamzThunder/on-diary/releases/latest/download/latest.json`
-- **macOS 최초 실행**: 우클릭 → 열기 (또는 `xattr -dr com.apple.quarantine "/Applications/On Diary.app"`)
+- **워크플로우 구조**: `build-macos` + `build-windows` 병렬 → `release` job에서 합쳐 latest.json 생성
+- **latest.json 플랫폼**: `darwin-aarch64`, `windows-x86_64`
+- **Windows 아티팩트**: NSIS `.exe` (설치파일) + `.nsis.zip` + `.nsis.zip.sig` (업데이터)
+- **macOS 최초 실행**: 우클릭 → 열기 (또는 `xattr -dr com.apple.quarantine "/Applications/dida.app"`)
 - **워크플로우**: `.github/workflows/release.yml`
+
+## 크로스 플랫폼 구현 (macOS vs Windows)
+| 기능 | macOS | Windows |
+|------|-------|---------|
+| 폰트 목록 | Python3 + NSFontManager | PowerShell + InstalledFontCollection |
+| 화면 캡처 | screencapture + Python Quartz | PowerShell PrintWindow(Win32 API) |
+| URL 열기 | `open` 명령 | `cmd /c start` |
+| DB 기본 경로 | iCloud Drive (`~/Library/Mobile Documents/...`) | AppData (`%APPDATA%/com.subinlee.ondiary/`) |
 
 ## 성능 관련 주의사항
 - **base64 이미지**: CanvasEl의 `content`에 base64 dataURL을 저장하므로 엔트리 JSON이 매우 커질 수 있음

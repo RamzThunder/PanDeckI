@@ -341,9 +341,8 @@ pub async fn pick_sticker_dir(app: tauri::AppHandle, state: State<'_, DbState>) 
 
 // ── System fonts ──────────────────────────────────────────────────────────────
 
-#[command]
-pub fn list_system_fonts() -> Vec<String> {
-    // macOS: use Python/NSFontManager to get all font family names
+#[cfg(target_os = "macos")]
+fn list_fonts_impl() -> Vec<String> {
     let script = r#"
 from AppKit import NSFontManager
 import json
@@ -354,20 +353,15 @@ print(json.dumps(sorted(fm.availableFontFamilies())))
         .args(["-c", script])
         .output()
         .ok();
-
     if let Some(out) = output {
         if out.status.success() {
             if let Ok(s) = String::from_utf8(out.stdout) {
                 if let Ok(fonts) = serde_json::from_str::<Vec<String>>(s.trim()) {
-                    if !fonts.is_empty() {
-                        return fonts;
-                    }
+                    if !fonts.is_empty() { return fonts; }
                 }
             }
         }
     }
-
-    // Fallback: scan font directories and extract file stems
     let mut fonts = std::collections::BTreeSet::new();
     let home = std::env::var("HOME").unwrap_or_default();
     for dir in [
@@ -381,17 +375,52 @@ print(json.dumps(sorted(fm.availableFontFamilies())))
                 let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
                 if ["ttf", "otf"].contains(&ext.as_str()) {
                     if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                        // Strip weight suffixes to get the family name (approximate)
-                        let name = stem
-                            .split('-').next().unwrap_or(stem)
-                            .to_string();
-                        fonts.insert(name);
+                        fonts.insert(stem.split('-').next().unwrap_or(stem).to_string());
                     }
                 }
             }
         }
     }
     fonts.into_iter().collect()
+}
+
+#[cfg(target_os = "windows")]
+fn list_fonts_impl() -> Vec<String> {
+    let script = r#"Add-Type -AssemblyName 'System.Drawing'; [System.Drawing.Text.InstalledFontCollection]::new().Families | ForEach-Object { $_.Name } | Sort-Object | ConvertTo-Json -Compress"#;
+    let output = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", script])
+        .output()
+        .ok();
+    if let Some(out) = output {
+        if out.status.success() {
+            if let Ok(s) = String::from_utf8(out.stdout) {
+                if let Ok(fonts) = serde_json::from_str::<Vec<String>>(s.trim()) {
+                    if !fonts.is_empty() { return fonts; }
+                }
+            }
+        }
+    }
+    let mut fonts = std::collections::BTreeSet::new();
+    if let Ok(entries) = fs::read_dir(r"C:\Windows\Fonts") {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+            if ["ttf", "otf"].contains(&ext.as_str()) {
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    fonts.insert(stem.split('-').next().unwrap_or(stem).to_string());
+                }
+            }
+        }
+    }
+    fonts.into_iter().collect()
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn list_fonts_impl() -> Vec<String> { vec![] }
+
+#[command]
+pub fn list_system_fonts() -> Vec<String> {
+    list_fonts_impl()
 }
 
 // ── Window ────────────────────────────────────────────────────────────────────
@@ -611,33 +640,42 @@ pub fn reset_db_path(app: AppHandle) -> Result<(), String> {
 
 // ── 화면 캡처 내보내기 ─────────────────────────────────────────────────────────
 
-// JS에서 경로 받은 뒤 screencapture 실행 → 해당 경로로 저장
-#[command]
-pub fn capture_screenshot_to(app: AppHandle, path: String) -> Result<(), String> {
-    let win = app.get_webview_window("main").ok_or("window not found")?;
-    let scale = win.scale_factor().map_err(|e| e.to_string())?;
-    let phys_pos = win.outer_position().map_err(|e| e.to_string())?;
-    let phys_size = win.outer_size().map_err(|e| e.to_string())?;
-    let lx = (phys_pos.x as f64 / scale) as i32;
-    let ly = (phys_pos.y as f64 / scale) as i32;
-    let lw = (phys_size.width as f64 / scale) as u32;
-    let lh = (phys_size.height as f64 / scale) as u32;
+#[cfg(target_os = "macos")]
+fn screenshot_region(lx: i32, ly: i32, lw: u32, lh: u32, path: &str) -> Result<(), String> {
     let region = format!("{},{},{},{}", lx, ly, lw, lh);
     std::process::Command::new("screencapture")
-        .args(["-R", &region, "-x", &path])
+        .args(["-R", &region, "-x", path])
         .status()
         .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-// 스크린샷을 임시 파일에 저장 후 base64로 반환 (미리보기용)
-// screencapture -l <windowID> 로 창만 알파 채널 포함 캡처 → 모서리 투명
-#[command]
-pub fn capture_screenshot_b64(app: AppHandle) -> Result<String, String> {
-    let win = app.get_webview_window("main").ok_or("window not found")?;
-    let tmp = std::env::temp_dir().join("dida_preview_tmp.png");
+#[cfg(target_os = "windows")]
+fn screenshot_region(lx: i32, ly: i32, lw: u32, lh: u32, path: &str) -> Result<(), String> {
+    let path_ps = path.replace('\'', "''");
+    let script = format!(
+        "Add-Type -AssemblyName 'System.Windows.Forms','System.Drawing'; \
+         $b=New-Object System.Drawing.Bitmap({lw},{lh}); \
+         $g=[System.Drawing.Graphics]::FromImage($b); \
+         $g.CopyFromScreen({lx},{ly},0,0,[System.Drawing.Size]::new({lw},{lh})); \
+         $g.Dispose(); $b.Save('{path}',[System.Drawing.Imaging.ImageFormat]::Png); $b.Dispose()",
+        lw = lw, lh = lh, lx = lx, ly = ly, path = path_ps
+    );
+    std::process::Command::new("powershell")
+        .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script])
+        .status()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
 
-    // Python Quartz로 on-diary 창의 CGWindowID 조회
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn screenshot_region(_lx: i32, _ly: i32, _lw: u32, _lh: u32, _path: &str) -> Result<(), String> {
+    Err("screenshot not supported on this platform".into())
+}
+
+#[cfg(target_os = "macos")]
+fn capture_window_to_file(app: &AppHandle, tmp: &std::path::Path) -> Result<(), String> {
+    let win = app.get_webview_window("main").ok_or("window not found")?;
     let py = r#"
 import Quartz, sys
 wl = Quartz.CGWindowListCopyWindowInfo(Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID)
@@ -650,15 +688,12 @@ for w in wl:
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
-
     if let Some(wid) = window_id {
-        // -l: 특정 창 캡처, -x: 무음 → 그림자 포함 알파 채널 PNG
         std::process::Command::new("screencapture")
             .args(["-l", &wid, "-x", tmp.to_str().unwrap()])
             .status()
             .map_err(|e| e.to_string())?;
     } else {
-        // Fallback: 지역 캡처 (JS 에서 body bg 설정 후 호출됨)
         let scale = win.scale_factor().map_err(|e| e.to_string())?;
         let phys_pos = win.outer_position().map_err(|e| e.to_string())?;
         let phys_size = win.outer_size().map_err(|e| e.to_string())?;
@@ -666,13 +701,78 @@ for w in wl:
         let ly = (phys_pos.y as f64 / scale) as i32;
         let lw = (phys_size.width as f64 / scale) as u32;
         let lh = (phys_size.height as f64 / scale) as u32;
-        let region = format!("{},{},{},{}", lx, ly, lw, lh);
-        std::process::Command::new("screencapture")
-            .args(["-R", &region, "-x", tmp.to_str().unwrap()])
-            .status()
-            .map_err(|e| e.to_string())?;
+        screenshot_region(lx, ly, lw, lh, tmp.to_str().unwrap())?;
     }
+    Ok(())
+}
 
+#[cfg(target_os = "windows")]
+fn capture_window_to_file(app: &AppHandle, tmp: &std::path::Path) -> Result<(), String> {
+    let tmp_path = tmp.to_string_lossy().replace('\'', "''");
+    let script = format!(
+        r#"Add-Type @'
+using System; using System.Runtime.InteropServices; using System.Drawing; using System.Drawing.Imaging;
+public class DidaCapture {{
+    [DllImport("user32.dll")] public static extern IntPtr FindWindow(string cls, string title);
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, ref RECT r);
+    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hwnd, IntPtr hdc, uint f);
+    [StructLayout(LayoutKind.Sequential)] public struct RECT {{ public int L, T, R, B; }}
+    public static bool Capture(string title, string path) {{
+        IntPtr hwnd = FindWindow(null, title);
+        if (hwnd == IntPtr.Zero) return false;
+        RECT r = new RECT(); GetWindowRect(hwnd, ref r);
+        int w = r.R - r.L, h = r.B - r.T;
+        if (w <= 0 || h <= 0) return false;
+        var bmp = new Bitmap(w, h, PixelFormat.Format32bppArgb);
+        using (var g = Graphics.FromImage(bmp)) {{ IntPtr hdc = g.GetHdc(); PrintWindow(hwnd, hdc, 0x2); g.ReleaseHdc(hdc); }}
+        bmp.Save(path, ImageFormat.Png); return true;
+    }}
+}}
+'@
+[DidaCapture]::Capture('dida', '{}')"#,
+        tmp_path
+    );
+    let ok = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !ok || !tmp.exists() {
+        let win = app.get_webview_window("main").ok_or("window not found")?;
+        let scale = win.scale_factor().map_err(|e| e.to_string())?;
+        let phys_pos = win.outer_position().map_err(|e| e.to_string())?;
+        let phys_size = win.outer_size().map_err(|e| e.to_string())?;
+        let lx = (phys_pos.x as f64 / scale) as i32;
+        let ly = (phys_pos.y as f64 / scale) as i32;
+        let lw = (phys_size.width as f64 / scale) as u32;
+        let lh = (phys_size.height as f64 / scale) as u32;
+        screenshot_region(lx, ly, lw, lh, &tmp.to_string_lossy())?;
+    }
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn capture_window_to_file(_app: &AppHandle, _tmp: &std::path::Path) -> Result<(), String> {
+    Err("screenshot not supported on this platform".into())
+}
+
+#[command]
+pub fn capture_screenshot_to(app: AppHandle, path: String) -> Result<(), String> {
+    let win = app.get_webview_window("main").ok_or("window not found")?;
+    let scale = win.scale_factor().map_err(|e| e.to_string())?;
+    let phys_pos = win.outer_position().map_err(|e| e.to_string())?;
+    let phys_size = win.outer_size().map_err(|e| e.to_string())?;
+    let lx = (phys_pos.x as f64 / scale) as i32;
+    let ly = (phys_pos.y as f64 / scale) as i32;
+    let lw = (phys_size.width as f64 / scale) as u32;
+    let lh = (phys_size.height as f64 / scale) as u32;
+    screenshot_region(lx, ly, lw, lh, &path)
+}
+
+#[command]
+pub fn capture_screenshot_b64(app: AppHandle) -> Result<String, String> {
+    let tmp = std::env::temp_dir().join("dida_preview_tmp.png");
+    capture_window_to_file(&app, &tmp)?;
     let bytes = fs::read(&tmp).map_err(|e| e.to_string())?;
     fs::remove_file(&tmp).ok();
     Ok(general_purpose::STANDARD.encode(&bytes))
@@ -738,9 +838,11 @@ pub fn get_youtube_proxy_port(state: State<YoutubeProxyPort>) -> u16 {
 
 #[command]
 pub fn open_url(url: String) -> Result<(), String> {
-    std::process::Command::new("open")
-        .arg(&url)
-        .spawn()
-        .map_err(|e| e.to_string())?;
+    #[cfg(target_os = "macos")]
+    std::process::Command::new("open").arg(&url).spawn().map_err(|e| e.to_string())?;
+    #[cfg(target_os = "windows")]
+    std::process::Command::new("cmd").args(["/c", "start", "", &url]).spawn().map_err(|e| e.to_string())?;
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    std::process::Command::new("xdg-open").arg(&url).spawn().map_err(|e| e.to_string())?;
     Ok(())
 }

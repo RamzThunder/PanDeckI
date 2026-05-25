@@ -67,16 +67,18 @@ fn resolve_db_path(app: &tauri::App) -> PathBuf {
         }
     }
 
-    // 기본값: iCloud → App Support 폴백
-    let icloud_dir = dirs::home_dir()
-        .expect("no home dir")
-        .join("Library/Mobile Documents/com~apple~CloudDocs/on_diary_data");
-    let db_dir = if std::fs::create_dir_all(&icloud_dir).is_ok() {
-        icloud_dir
-    } else {
-        app_data
-    };
-    db_dir.join("diary.db")
+    // macOS: iCloud Drive 우선, 실패 시 App Support 폴백
+    #[cfg(target_os = "macos")]
+    {
+        let icloud_dir = dirs::home_dir()
+            .expect("no home dir")
+            .join("Library/Mobile Documents/com~apple~CloudDocs/on_diary_data");
+        if std::fs::create_dir_all(&icloud_dir).is_ok() {
+            return icloud_dir.join("diary.db");
+        }
+    }
+
+    app_data.join("diary.db")
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
