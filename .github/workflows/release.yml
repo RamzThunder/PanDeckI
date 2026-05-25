@@ -59,7 +59,7 @@ jobs:
   build-windows:
     runs-on: windows-latest
     outputs:
-      win_zip_name: ${{ steps.info.outputs.win_zip_name }}
+      win_exe_name: ${{ steps.info.outputs.win_exe_name }}
       win_sig: ${{ steps.info.outputs.win_sig }}
     steps:
       - uses: actions/checkout@v4
@@ -85,22 +85,20 @@ jobs:
       - id: info
         shell: bash
         run: |
-          echo "=== Windows bundle contents ==="
-          find src-tauri/target -path "*/bundle/*" -type f 2>/dev/null || true
-
-          ZIP=$(find src-tauri/target -path "*/bundle/nsis/*.nsis.zip" 2>/dev/null | head -1)
-          [ -z "$ZIP" ] && ZIP=$(find src-tauri/target -path "*/bundle/msi/*.msi.zip" 2>/dev/null | head -1)
-          [ -z "$ZIP" ] && ZIP=$(find src-tauri/target -path "*/bundle/*" -name "*.zip" 2>/dev/null | head -1)
-          if [ -z "$ZIP" ]; then echo "ERROR: no updater zip found"; exit 1; fi
-          echo "Found ZIP: $ZIP"
-          echo "win_zip_name=$(basename $ZIP)" >> $GITHUB_OUTPUT
-          echo "win_sig=$(cat ${ZIP}.sig)" >> $GITHUB_OUTPUT
+          # Tauri v2: createUpdaterArtifacts:true → .exe + .exe.sig (no zip)
+          SIG=$(find src-tauri/target -path "*/bundle/nsis/*.exe.sig" 2>/dev/null | head -1)
+          [ -z "$SIG" ] && SIG=$(find src-tauri/target -path "*/bundle/msi/*.msi.sig" 2>/dev/null | head -1)
+          if [ -z "$SIG" ]; then echo "ERROR: no updater sig found"; exit 1; fi
+          WIN_FILE="${SIG%.sig}"
+          echo "Found: $WIN_FILE"
+          echo "win_exe_name=$(basename $WIN_FILE)" >> $GITHUB_OUTPUT
+          echo "win_sig=$(cat $SIG)" >> $GITHUB_OUTPUT
 
       - name: Stage artifacts
         shell: bash
         run: |
           mkdir -p staging
-          for ext in "*.exe" "*.nsis.zip" "*.nsis.zip.sig" "*.msi" "*.msi.zip" "*.msi.zip.sig"; do
+          for ext in "*.exe" "*.exe.sig" "*.msi" "*.msi.sig"; do
             find src-tauri/target -path "*/bundle/*" -name "$ext" -exec cp {} staging/ \; 2>/dev/null || true
           done
           echo "=== Staged files ==="
@@ -140,7 +138,7 @@ jobs:
 
           MAC_TAR="${{ needs.build-macos.outputs.tar_name }}"
           MAC_SIG="${{ needs.build-macos.outputs.tar_sig }}"
-          WIN_ZIP="${{ needs.build-windows.outputs.win_zip_name }}"
+          WIN_EXE="${{ needs.build-windows.outputs.win_exe_name }}"
           WIN_SIG="${{ needs.build-windows.outputs.win_sig }}"
 
           echo "=== Artifacts ==="
@@ -153,7 +151,7 @@ jobs:
             --arg mac_sig "$MAC_SIG" \
             --arg mac_url "${BASE_URL}/${MAC_TAR}" \
             --arg win_sig "$WIN_SIG" \
-            --arg win_url "${BASE_URL}/${WIN_ZIP}" \
+            --arg win_url "${BASE_URL}/${WIN_EXE}" \
             '{"version":$version,"notes":$notes,"pub_date":$pub_date,"platforms":{
               "darwin-aarch64":{"signature":$mac_sig,"url":$mac_url},
               "windows-x86_64":{"signature":$win_sig,"url":$win_url}
