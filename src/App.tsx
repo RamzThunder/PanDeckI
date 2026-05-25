@@ -35,13 +35,11 @@ export default function App(): JSX.Element {
   zoomRef.current = appZoom
 
   useEffect(() => {
-    alert('[updater] check 함수 진입')
     check().then(async update => {
-      if (!update) { alert('[updater] 업데이트 없음'); return }
-      alert(`[updater] 업데이트 발견: ${update.version}`)
+      if (!update) return
       const yes = await ask(`새 버전 ${update.version}이 있습니다.\n지금 업데이트 하시겠습니까?`, { title: 'dida 업데이트', kind: 'info' })
       if (yes) { await update.downloadAndInstall(); await relaunch() }
-    }).catch(e => alert(`업데이트 체크 실패: ${String(e)}`))
+    }).catch(() => {})
   }, [])
 
   useEffect(() => {
