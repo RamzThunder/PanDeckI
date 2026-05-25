@@ -2140,7 +2140,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
 
               {selectedEl.type === 'text' && (<>
                 {/* Row 1: 글꼴 조정 */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'center' }}>
 
                   {/* 폰트 사이즈 하이브리드 콤보박스 */}
                   <div className="relative" style={{ flexShrink: 0 }}>
@@ -2250,12 +2250,13 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                 {hSep}
 
                 {/* Row 2: 문장 조정 */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'center' }}>
 
                   <span style={{ fontSize: 10, color: 'var(--color-text-muted)', flexShrink: 0 }}>줄간격</span>
-                  <input type="number" min={0.8} max={3.0} step={0.05} value={selectedEl.lineHeight ?? 1.4}
+                  <input type="range" min={0.8} max={3.0} step={0.05} value={selectedEl.lineHeight ?? 1.4}
                     onChange={e => updateEl(selectedEl.id, { lineHeight: Number(e.target.value) })}
-                    style={{ width: 50, height: 28, fontSize: 11, textAlign: 'center', padding: '0 2px', borderRadius: 4, border: '1px solid var(--color-border)', flexShrink: 0 }} />
+                    style={{ width: 60, height: 4, cursor: 'pointer', flexShrink: 0 }} />
+                  <span style={{ fontSize: 10, color: 'var(--color-primary-dark)', minWidth: 24, flexShrink: 0 }}>{(selectedEl.lineHeight ?? 1.4).toFixed(2)}</span>
 
                   {vSep}
 
