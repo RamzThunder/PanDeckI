@@ -83,6 +83,15 @@ jobs:
 
           cat latest.json
 
+          # dida-releases 레포가 비어있으면 초기 커밋 생성
+          GH_TOKEN="${{ secrets.RELEASES_PAT }}" gh api \
+            --method PUT \
+            -H "Accept: application/vnd.github+json" \
+            /repos/RamzThunder/dida-releases/contents/README.md \
+            -f message="init" \
+            -f content="$(echo 'dida releases' | base64)" \
+            2>/dev/null || true
+
           GH_TOKEN="${{ secrets.RELEASES_PAT }}" gh release create "$TAG" "$DMG" "$TAR" "${TAR}.sig" latest.json \
             --repo RamzThunder/dida-releases \
             --title "dida $TAG" \
