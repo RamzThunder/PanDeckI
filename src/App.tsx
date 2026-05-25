@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { check } from '@tauri-apps/plugin-updater'
+import { ask } from '@tauri-apps/plugin-dialog'
+import { relaunch } from '@tauri-apps/plugin-process'
 import { useDiaryNav } from './store/diary'
 import { PRESET_THEMES, applyTheme, applyGlobalFont } from './store/theme'
 import { api } from './api'
@@ -30,6 +33,14 @@ export default function App(): JSX.Element {
 
   const zoomRef = useRef(appZoom)
   zoomRef.current = appZoom
+
+  useEffect(() => {
+    check().then(async update => {
+      if (!update) return
+      const yes = await ask(`새 버전 ${update.version}이 있습니다.\n지금 업데이트 하시겠습니까?`, { title: 'dida 업데이트', kind: 'info' })
+      if (yes) { await update.downloadAndInstall(); await relaunch() }
+    }).catch(() => {})
+  }, [])
 
   useEffect(() => {
     async function loadSettings() {
