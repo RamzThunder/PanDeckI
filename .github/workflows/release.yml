@@ -85,10 +85,14 @@ jobs:
       - id: info
         shell: bash
         run: |
-          BUNDLE="src-tauri/target/release/bundle"
-          ZIP=$(find "$BUNDLE/nsis" -name "*.nsis.zip" 2>/dev/null | head -1)
-          [ -z "$ZIP" ] && ZIP=$(find "$BUNDLE/msi" -name "*.msi.zip" 2>/dev/null | head -1)
+          echo "=== Windows bundle contents ==="
+          find src-tauri/target -path "*/bundle/*" -type f 2>/dev/null || true
+
+          ZIP=$(find src-tauri/target -path "*/bundle/nsis/*.nsis.zip" 2>/dev/null | head -1)
+          [ -z "$ZIP" ] && ZIP=$(find src-tauri/target -path "*/bundle/msi/*.msi.zip" 2>/dev/null | head -1)
+          [ -z "$ZIP" ] && ZIP=$(find src-tauri/target -path "*/bundle/*" -name "*.zip" 2>/dev/null | head -1)
           if [ -z "$ZIP" ]; then echo "ERROR: no updater zip found"; exit 1; fi
+          echo "Found ZIP: $ZIP"
           echo "win_zip_name=$(basename $ZIP)" >> $GITHUB_OUTPUT
           echo "win_sig=$(cat ${ZIP}.sig)" >> $GITHUB_OUTPUT
 
@@ -96,10 +100,11 @@ jobs:
         shell: bash
         run: |
           mkdir -p staging
-          BUNDLE="src-tauri/target/release/bundle"
           for ext in "*.exe" "*.nsis.zip" "*.nsis.zip.sig" "*.msi" "*.msi.zip" "*.msi.zip.sig"; do
-            find "$BUNDLE" -name "$ext" -exec cp {} staging/ \; 2>/dev/null || true
+            find src-tauri/target -path "*/bundle/*" -name "$ext" -exec cp {} staging/ \; 2>/dev/null || true
           done
+          echo "=== Staged files ==="
+          ls staging/
 
       - uses: actions/upload-artifact@v4
         with:
