@@ -58,7 +58,10 @@ jobs:
       - name: Create updater latest.json
         run: |
           TAG="${{ github.ref_name }}"
-          SIG_FILE=$(find src-tauri/target/aarch64-apple-darwin/release/bundle/macos -name "*.app.tar.gz.sig" | head -1)
+          echo "=== Searching for .sig files ==="
+          find src-tauri/target -name "*.sig" 2>/dev/null || echo "none found"
+          SIG_FILE=$(find src-tauri/target -name "*.app.tar.gz.sig" | head -1)
+          echo "SIG_FILE: $SIG_FILE"
           TAR_NAME=$(basename "${SIG_FILE%.sig}")
           python3 - "$TAG" "$SIG_FILE" "$TAR_NAME" <<'PYEOF'
           import json, sys, datetime
