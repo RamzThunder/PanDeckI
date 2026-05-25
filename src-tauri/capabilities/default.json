@@ -17,6 +17,6 @@
     "fs:allow-remove",
     "fs:default",
     "updater:default",
-    "process:allow-restart"
+    "process:default"
   ]
 }
