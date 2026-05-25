@@ -10,16 +10,7 @@ permissions:
 
 jobs:
   release:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macos-latest
-            target: aarch64-apple-darwin
-          - platform: macos-13
-            target: x86_64-apple-darwin
-
-    runs-on: ${{ matrix.platform }}
+    runs-on: macos-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -33,7 +24,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: aarch64-apple-darwin
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -62,4 +53,4 @@ jobs:
             이후 버전은 자동으로 업데이트됩니다.
           releaseDraft: false
           prerelease: false
-          args: --target ${{ matrix.target }}
+          args: --target aarch64-apple-darwin
