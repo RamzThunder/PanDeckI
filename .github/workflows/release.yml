@@ -83,14 +83,9 @@ jobs:
 
           cat latest.json
 
-          # dida-releases 레포가 비어있으면 초기 커밋 생성
-          GH_TOKEN="${{ secrets.RELEASES_PAT }}" gh api \
-            --method PUT \
-            -H "Accept: application/vnd.github+json" \
-            /repos/RamzThunder/dida-releases/contents/README.md \
-            -f message="init" \
-            -f content="$(echo 'dida releases' | base64)" \
-            2>/dev/null || true
+          # 기존 릴리즈 있으면 삭제 (force-push 재빌드 대응)
+          GH_TOKEN="${{ secrets.RELEASES_PAT }}" gh release delete "$TAG" \
+            --repo RamzThunder/dida-releases --yes 2>/dev/null || true
 
           GH_TOKEN="${{ secrets.RELEASES_PAT }}" gh release create "$TAG" "$DMG" "$TAR" "${TAR}.sig" latest.json \
             --repo RamzThunder/dida-releases \
