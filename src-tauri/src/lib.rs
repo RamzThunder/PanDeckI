@@ -40,6 +40,7 @@ pub fn run() {
             db::setup_database(&db_path)?;
             app.manage(db::DbPathState(std::sync::Mutex::new(db_path.clone())));
             app.manage(db::DbState::new(db_path));
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
