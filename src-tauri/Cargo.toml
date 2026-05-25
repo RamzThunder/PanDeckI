@@ -1,16 +1,16 @@
 [package]
-name = "on-diary"
+name = "dida"
 version = "1.0.0"
 description = "dida — digital diary"
 authors = ["subinlee"]
 edition = "2021"
 
 [lib]
-name = "on_diary_lib"
+name = "dida_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [[bin]]
-name = "on-diary"
+name = "dida"
 path = "src/main.rs"
 
 [build-dependencies]

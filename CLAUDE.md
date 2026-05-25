@@ -5,7 +5,7 @@
 
 ## 앱 개요
 개인 디지털 다이어리 데스크톱 앱. 자유 캔버스 꾸미기 스타일.
-**앱 이름**: dida (구 On Diary) — `productName`, `package.json name`, 창 타이틀 모두 "dida"로 변경됨.
+**앱 이름**: dida (구 On Diary) — `productName`, `package.json name`, 창 타이틀, **Rust 실행 파일명** 모두 "dida"로 변경됨.
 
 ## 기술 스택
 - **프레임워크**: Tauri 2 (Rust 백엔드 + WKWebView 프론트엔드)
@@ -138,7 +138,8 @@ export interface DailyData {
 - **유령 모드**: exclude(숨김)/mosaic(모자이크)/blur(블러) — PNG 내보내기 시 적용
 - **프라이버시 보호 토글**: 내보내기 미리보기 모달 내 👻 버튼. ON=유령모드 적용, OFF=모든 요소 원본 내보내기 (사이드바 버튼 제거됨)
 - **유령 모드 blur 내보내기**: WKWebView에서 `ctx.filter` 미작동 → 3-pass box blur (JS 픽셀 처리) + 코사인 소프트 마스크 페더링으로 구현 (`applyBlurExport`, `boxBlurH`, `boxBlurV` in DailyView.tsx)
-- **비디오**: YouTube/Vimeo embed(`videoType: 'embed'`) + 로컬 파일(`videoType: 'local'`). YouTube URL 인식: watch?v=, shorts/, live/, youtu.be/
+- **비디오**: YouTube/Vimeo embed(`videoType: 'embed'`) + 로컬 파일(`videoType: 'local'`). YouTube URL 인식: watch?v=, shorts/, live/, youtu.be/. embed URL: `youtube.com/embed/` 사용 (nocookie 아님)
+- **동영상 툴바**: photo=600px, 그 외(video/card/sticker 등)=410px, text=460px
 - **카드/스크랩**: TemplateModal로 편집하는 구조화된 카드 요소
 - **회전 스냅**: Shift 누른 채 핸들 회전 시 15° 단위로 스냅
 - **클립보드 붙여넣기**: Cmd+V로 이미지→사진요소, 텍스트→텍스트요소
@@ -157,9 +158,9 @@ export interface DailyData {
 - (프라이버시 토글 알약 제거됨 — 내보내기 미리보기 모달로 이동)
 
 ## SettingsPanel 구조 (우측 패널)
-- **테마 탭**: 프리셋 5종 + 커스텀 5슬롯 (인라인 에디터) + 전체 폰트 선택
-- **화면 탭**: 다이어리 이름 입력 + 줌 슬라이더 (50~150%) + 유령 모드 강도 슬라이더 (모자이크/블러) + 초기화 버튼
-- **백업 버튼**: 내보내기 / 불러오기 (JSON 파일)
+- **정보 탭**: 소프트웨어 버전 표시(`getVersion()`) + 수동 업데이트 버튼(`check()` → ask → downloadAndInstall → relaunch) + 다이어리 이름 + 백업 내보내기/불러오기 + DB 저장 위치
+- **화면 탭**: 줌 슬라이더 (50~150%) + 전체 폰트 선택 + 폰트 크기/오프셋 + 유령 모드 강도 슬라이더 (모자이크/블러) + 초기화 버튼
+- **세부설정 탭**: 스크랩 기본값 편집
 
 ## CropModal 동작 방식
 - **일반 모드**: 고정 프레임 (frameW × frameH), 이미지 이동/스크롤 줌

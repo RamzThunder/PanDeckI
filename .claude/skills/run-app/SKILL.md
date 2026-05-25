@@ -41,7 +41,7 @@ until grep -q "Running.*on-diary\|error\[" /tmp/tauri-dev.log 2>/dev/null; do sl
 ## 강제 종료
 
 ```bash
-pkill -f "on-diary"; pkill -f "tauri dev"; kill $(lsof -ti:1420) 2>/dev/null
+pkill -f "dida"; pkill -f "tauri dev"; kill $(lsof -ti:1420) 2>/dev/null
 ```
 
 ## 로그 확인

@@ -215,7 +215,7 @@ function getPhotoClipStyle(shape: string, customShapes: CustomShape[]): React.CS
 
 function getVideoEmbedUrl(url: string): string | null {
   const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|live\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/)
-  if (yt) return `https://www.youtube-nocookie.com/embed/${yt[1]}?rel=0&playsinline=1`
+  if (yt) return `https://www.youtube.com/embed/${yt[1]}?rel=0&playsinline=1`
   const vimeo = url.match(/vimeo\.com\/(\d+)/)
   if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}?playsinline=1`
   return null
@@ -2054,9 +2054,9 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
           const TOOLBAR_H = selectedEl.type === 'text' ? 120 : 44
           const TOOLBAR_W = selectedEl.type === 'text'
               ? 460
-              : selectedEl.type === 'sticker'
-                ? 410
-                : 600
+              : selectedEl.type === 'photo'
+                ? 600
+                : 410
                 
           // 1. 기본 위치: 개체 아래쪽 (+20px 여유)
           let top = selectedEl.y + selectedEl.h + 20

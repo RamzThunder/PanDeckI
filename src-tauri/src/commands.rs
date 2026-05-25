@@ -634,14 +634,14 @@ pub fn capture_screenshot_to(app: AppHandle, path: String) -> Result<(), String>
 #[command]
 pub fn capture_screenshot_b64(app: AppHandle) -> Result<String, String> {
     let win = app.get_webview_window("main").ok_or("window not found")?;
-    let tmp = std::env::temp_dir().join("on_diary_preview_tmp.png");
+    let tmp = std::env::temp_dir().join("dida_preview_tmp.png");
 
     // Python Quartz로 on-diary 창의 CGWindowID 조회
     let py = r#"
 import Quartz, sys
 wl = Quartz.CGWindowListCopyWindowInfo(Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID)
 for w in wl:
-    if w.get('kCGWindowOwnerName','') == 'on-diary':
+    if w.get('kCGWindowOwnerName','') == 'dida':
         print(w['kCGWindowNumber']); sys.exit(0)
 "#;
     let id_out = std::process::Command::new("python3").arg("-c").arg(py).output().ok();

@@ -1,5 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { getVersion } from '@tauri-apps/api/app'
+import { check } from '@tauri-apps/plugin-updater'
+import { ask } from '@tauri-apps/plugin-dialog'
+import { relaunch } from '@tauri-apps/plugin-process'
 import { Theme, PRESET_THEMES, applyTheme, applyGlobalFont } from '../store/theme'
 import { api } from '../api'
 
@@ -198,6 +202,9 @@ export default function SettingsPanel({
   const [selectedScrapTpl, setSelectedScrapTpl] = useState<string | null>(null)
   const [dbPath, setDbPath] = useState('')
   const [dbPending, setDbPending] = useState(false)
+  const [appVersion, setAppVersion] = useState('')
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
+  const [updateMsg, setUpdateMsg] = useState('')
 
   useEffect(() => {
     async function load() {
@@ -216,9 +223,30 @@ export default function SettingsPanel({
 
       const path = await api.db.getPath().catch(() => '')
       setDbPath(path)
+
+      const v = await getVersion().catch(() => '')
+      setAppVersion(v)
     }
     load()
   }, [])
+
+  const handleCheckUpdate = async () => {
+    setCheckingUpdate(true)
+    setUpdateMsg('')
+    try {
+      const update = await check()
+      if (!update) {
+        setUpdateMsg('최신 버전입니다.')
+      } else {
+        const yes = await ask(`새 버전 ${update.version}이 있습니다.\n지금 업데이트 하시겠습니까?`, { title: 'dida 업데이트', kind: 'info' })
+        if (yes) { await update.downloadAndInstall(); await relaunch() }
+        else { setUpdateMsg('업데이트를 취소했습니다.') }
+      }
+    } catch {
+      setUpdateMsg('업데이트 확인 중 오류가 발생했습니다.')
+    }
+    setCheckingUpdate(false)
+  }
 
   const saveCustom = async (idx: number, theme: Theme) => {
     const slot = CUSTOM_SLOTS[idx]
@@ -301,6 +329,22 @@ export default function SettingsPanel({
         {/* Tab: 정보 */}
         {tab === 'info' && (
           <div className="flex-1 p-4 flex flex-col gap-5 overflow-y-auto">
+            <section>
+              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>소프트웨어 정보</p>
+              <div className="rounded-xl px-3 py-2 mb-2 flex items-center justify-between"
+                style={{ background: 'var(--color-primary-light)', border: '1px solid var(--color-border)' }}>
+                <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>버전</span>
+                <span className="text-xs font-semibold" style={{ color: 'var(--color-text)' }}>{appVersion || '…'}</span>
+              </div>
+              <button
+                onClick={handleCheckUpdate}
+                disabled={checkingUpdate}
+                className="w-full text-xs py-2 rounded-xl font-medium"
+                style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)', opacity: checkingUpdate ? 0.6 : 1, cursor: checkingUpdate ? 'not-allowed' : 'pointer' }}>
+                {checkingUpdate ? '확인 중…' : '업데이트 확인'}
+              </button>
+              {updateMsg && <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>{updateMsg}</p>}
+            </section>
             <section>
               <p className="text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>다이어리 이름</p>
               <input
