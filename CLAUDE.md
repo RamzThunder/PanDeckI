@@ -65,8 +65,9 @@ export interface CanvasEl {
   // 텍스트 전용
   fontSize: number; color: string; bold: boolean; italic: boolean
   underline?: boolean; strikethrough?: boolean
-  letterSpacing?: number   // 자간 (px, 기본 0)
-  lineHeight?: number      // 줄간격 배율 (기본 1.4)
+  letterSpacing?: number   // 자간 (px, 기본 0) — 숫자 입력
+  lineHeight?: number      // 줄간격 배율 (기본 1.4) — 숫자 입력
+  scaleX?: number          // 장평 (%, 기본 100) — 숫자 입력
   fontFamily: string
   bgColor: string; bgOpacity: number   // 배경색 + 불투명도 (0=투명)
   align: 'left' | 'center' | 'right'

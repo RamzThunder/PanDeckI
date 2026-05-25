@@ -30,6 +30,7 @@ export interface CanvasEl {
   underline?: boolean; strikethrough?: boolean
   letterSpacing?: number
   lineHeight?: number
+  scaleX?: number
   fontFamily: string
   bgColor: string; bgOpacity: number
   align: 'left' | 'center' | 'right'
@@ -757,7 +758,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
       content: '텍스트를 입력하세요',
       fontSize: src.fontSize, color: src.color, bold: src.bold, italic: src.italic,
       underline: src.underline, strikethrough: src.strikethrough,
-      letterSpacing: src.letterSpacing, lineHeight: src.lineHeight,
+      letterSpacing: src.letterSpacing, lineHeight: src.lineHeight, scaleX: src.scaleX,
       fontFamily: src.fontFamily, bgColor: src.bgColor, bgOpacity: src.bgOpacity,
       align: src.align, alignV: src.alignV, textRadius: src.textRadius,
       borderWidth: src.borderWidth, borderColor: src.borderColor,
@@ -831,19 +832,22 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
         }
         const pad = 6, fs = el.fontSize
         const lh = fs * (el.lineHeight ?? 1.4)
+        const sx = (el.scaleX ?? 100) / 100
         ctx.font = `${el.italic ? 'italic ' : ''}${el.bold ? 'bold ' : ''}${fs}px ${el.fontFamily}`
         ;(ctx as any).letterSpacing = `${el.letterSpacing ?? 0}px`
         ctx.fillStyle = el.color; ctx.textBaseline = 'top'
         ctx.textAlign = el.align as CanvasTextAlign
         const textX = el.align === 'left' ? pad : el.align === 'center' ? el.w / 2 : el.w - pad
+        if (sx !== 1) ctx.transform(sx, 0, 0, 1, textX * (1 - sx), 0)
         const maxW = el.w - pad * 2
+        const effectiveMaxW = maxW / sx
         const allLines: string[] = []
         for (const para of el.content.split('\n')) {
           if (!para) { allLines.push(''); continue }
           const words = para.split(' '); let cur = ''
           for (const word of words) {
             const test = cur ? cur + ' ' + word : word
-            if (ctx.measureText(test).width > maxW && cur) { allLines.push(cur); cur = word }
+            if (ctx.measureText(test).width > effectiveMaxW && cur) { allLines.push(cur); cur = word }
             else { cur = test }
           }
           allLines.push(cur)
@@ -1838,6 +1842,8 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                         lineHeight: el.lineHeight ?? 1.4,
                         fontFamily: el.fontFamily,
                         textAlign: el.align, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                        transform: (el.scaleX ?? 100) !== 100 ? `scaleX(${(el.scaleX ?? 100) / 100})` : undefined,
+                        transformOrigin: el.align === 'center' ? 'center top' : el.align === 'right' ? 'right top' : 'left top',
                       }}>{el.content}</div>
                     </div>
                   )
@@ -2099,7 +2105,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
           
           const TOOLBAR_H = selectedEl.type === 'text' ? 158 : 44
           const TOOLBAR_W = selectedEl.type === 'text'
-              ? 480
+              ? 500
               : selectedEl.type === 'photo'
                 ? 600
                 : 410
@@ -2227,10 +2233,17 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                   {vSep}
 
                   <span style={{ fontSize: 10, color: 'var(--color-text-muted)', flexShrink: 0 }}>자간</span>
-                  <input type="range" min={-5} max={20} step={0.5} value={selectedEl.letterSpacing ?? 0}
+                  <input type="number" min={-10} max={30} step={0.5} value={selectedEl.letterSpacing ?? 0}
                     onChange={e => updateEl(selectedEl.id, { letterSpacing: Number(e.target.value) })}
-                    style={{ width: 52, height: 4, cursor: 'pointer', flexShrink: 0 }} />
-                  <span style={{ fontSize: 10, color: 'var(--color-primary-dark)', minWidth: 20, flexShrink: 0 }}>{selectedEl.letterSpacing ?? 0}</span>
+                    style={{ width: 44, height: 28, fontSize: 11, textAlign: 'center', padding: '0 2px', borderRadius: 4, border: '1px solid var(--color-border)', flexShrink: 0 }} />
+
+                  {vSep}
+
+                  <span style={{ fontSize: 10, color: 'var(--color-text-muted)', flexShrink: 0 }}>장평</span>
+                  <input type="number" min={50} max={200} step={1} value={selectedEl.scaleX ?? 100}
+                    onChange={e => updateEl(selectedEl.id, { scaleX: Number(e.target.value) })}
+                    style={{ width: 44, height: 28, fontSize: 11, textAlign: 'center', padding: '0 2px', borderRadius: 4, border: '1px solid var(--color-border)', flexShrink: 0 }} />
+                  <span style={{ fontSize: 10, color: 'var(--color-text-muted)', flexShrink: 0 }}>%</span>
 
                 </div>
 
@@ -2240,10 +2253,9 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                 <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
 
                   <span style={{ fontSize: 10, color: 'var(--color-text-muted)', flexShrink: 0 }}>줄간격</span>
-                  <input type="range" min={0.8} max={3.0} step={0.05} value={selectedEl.lineHeight ?? 1.4}
+                  <input type="number" min={0.8} max={3.0} step={0.05} value={selectedEl.lineHeight ?? 1.4}
                     onChange={e => updateEl(selectedEl.id, { lineHeight: Number(e.target.value) })}
-                    style={{ width: 60, height: 4, cursor: 'pointer', flexShrink: 0 }} />
-                  <span style={{ fontSize: 10, color: 'var(--color-primary-dark)', minWidth: 24, flexShrink: 0 }}>{(selectedEl.lineHeight ?? 1.4).toFixed(2)}</span>
+                    style={{ width: 50, height: 28, fontSize: 11, textAlign: 'center', padding: '0 2px', borderRadius: 4, border: '1px solid var(--color-border)', flexShrink: 0 }} />
 
                   {vSep}
 
