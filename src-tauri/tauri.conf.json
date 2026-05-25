@@ -1,5 +1,5 @@
 {
-  "productName": "On Diary",
+  "productName": "dida",
   "version": "1.0.0",
   "identifier": "com.subinlee.ondiary",
   "build": {
@@ -12,7 +12,7 @@
     "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "On Diary",
+        "title": "dida",
         "width": 1800,
         "height": 1012,
         "minWidth": 900,

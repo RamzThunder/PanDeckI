@@ -1,7 +1,7 @@
 [package]
 name = "on-diary"
 version = "1.0.0"
-description = "A beautiful digital diary app"
+description = "dida — digital diary"
 authors = ["subinlee"]
 edition = "2021"
 

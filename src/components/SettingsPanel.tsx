@@ -46,7 +46,7 @@ const COLOR_FIELDS: { key: keyof Theme; label: string }[] = [
   { key: 'border', label: '테두리' },
 ]
 
-type Tab = 'theme' | 'display' | 'scrap'
+type Tab = 'info' | 'display' | 'detail'
 
 const SCRAP_TPL_FIELDS: Record<string, { key: string; label: string }[]> = {
   baseball:  [{ key:'away', label:'원정팀' }, { key:'venue', label:'경기장' }, { key:'seat', label:'좌석' }],
@@ -89,7 +89,7 @@ export default function SettingsPanel({
   diaryName, onDiaryNameChange,
   onClose,
 }: Props): JSX.Element {
-  const [tab, setTab] = useState<Tab>('theme')
+  const [tab, setTab] = useState<Tab>('info')
   const [customs, setCustoms] = useState<(Theme | null)[]>(Array(5).fill(null))
   const [editIdx, setEditIdx] = useState<number | null>(null)
   const [draft, setDraft] = useState<Theme>(EMPTY_CUSTOM)
@@ -128,6 +128,13 @@ export default function SettingsPanel({
     await api.settings.set(`theme_${slot}`, JSON.stringify(t)).catch(() => {})
     setCustoms(prev => { const next = [...prev]; next[idx] = t; return next })
     return t
+  }
+
+  const deleteCustom = async (idx: number) => {
+    const slot = CUSTOM_SLOTS[idx]
+    await api.settings.set(`theme_${slot}`, '').catch(() => {})
+    setCustoms(prev => { const next = [...prev]; next[idx] = null; return next })
+    if (activeThemeId === slot) selectTheme(PRESET_THEMES[0])
   }
 
   const selectTheme = (t: Theme) => { applyTheme(t); onThemeChange(t.id) }
@@ -181,7 +188,7 @@ export default function SettingsPanel({
 
         {/* Tabs */}
         <div className="flex shrink-0" style={{ borderBottom: '1px solid var(--color-border)' }}>
-          {([['theme', '테마'], ['display', '화면'], ['scrap', '스크랩']] as const).map(([id, label]) => (
+          {([['info', '정보'], ['display', '화면'], ['detail', '세부설정']] as const).map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)}
               className="flex-1 text-xs py-2 font-medium"
               style={{
@@ -193,9 +200,175 @@ export default function SettingsPanel({
           ))}
         </div>
 
-        {/* Tab: 테마 */}
-        {tab === 'theme' && (
+        {/* Tab: 정보 */}
+        {tab === 'info' && (
           <div className="flex-1 p-4 flex flex-col gap-5 overflow-y-auto">
+            <section>
+              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>다이어리 이름</p>
+              <input
+                type="text"
+                value={diaryName}
+                onChange={e => onDiaryNameChange(e.target.value)}
+                placeholder="on_diary"
+                className="w-full text-xs px-3 py-2 rounded-lg outline-none"
+                style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }}
+              />
+              <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                내보내기 파일명에 사용돼요. (예: {(diaryName || 'on_diary').replace(/\s+/g, '_')}_260524_2156.png)
+              </p>
+            </section>
+
+            <section>
+              <p className="text-xs font-semibold mb-3" style={{ color: 'var(--color-text-muted)' }}>데이터 관리</p>
+              <div className="flex flex-col gap-2">
+                <button onClick={() => api.backup.export().catch(() => {})}
+                  className="w-full text-xs py-2 rounded-xl hover:opacity-80 font-medium"
+                  style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>
+                  백업 내보내기
+                </button>
+                <button onClick={() => api.backup.import().catch(() => {})}
+                  className="w-full text-xs py-2 rounded-xl hover:opacity-80 font-medium"
+                  style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>
+                  백업 불러오기
+                </button>
+              </div>
+              <p className="text-xs mt-2" style={{ color: 'var(--color-text-muted)' }}>
+                모든 일기·설정을 JSON 파일로 내보내거나 복원해요.
+              </p>
+            </section>
+
+            <section>
+              <p className="text-xs font-semibold mb-3" style={{ color: 'var(--color-text-muted)' }}>데이터 저장 위치</p>
+              <div className="rounded-xl px-3 py-2 mb-2 text-xs break-all" style={{ background: 'var(--color-primary-light)', color: 'var(--color-text)' }}>
+                {dbPath || '불러오는 중…'}
+              </div>
+              <div className="flex gap-2 mb-2">
+                <button
+                  className="flex-1 text-xs py-2 rounded-xl hover:opacity-80 font-medium"
+                  style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}
+                  onClick={async () => {
+                    try {
+                      const newPath = await api.db.pickDir()
+                      setDbPath(newPath)
+                      setDbPending(true)
+                    } catch {}
+                  }}>
+                  위치 변경
+                </button>
+                <button
+                  className="flex-1 text-xs py-2 rounded-xl hover:opacity-80 font-medium"
+                  style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}
+                  onClick={async () => {
+                    await api.db.resetPath().catch(() => {})
+                    const path = await api.db.getPath().catch(() => '')
+                    setDbPath(path)
+                    setDbPending(true)
+                  }}>
+                  기본값으로
+                </button>
+              </div>
+              {dbPending && (
+                <div className="rounded-xl px-3 py-2 flex items-center justify-between gap-2"
+                  style={{ background: 'var(--color-primary)', color: '#fff' }}>
+                  <span className="text-xs">재시작 후 적용돼요.</span>
+                  <button className="text-xs font-semibold underline hover:opacity-80"
+                    onClick={() => { invoke('window_close') }}>
+                    지금 종료
+                  </button>
+                </div>
+              )}
+            </section>
+          </div>
+        )}
+
+        {/* Tab: 화면 */}
+        {tab === 'display' && (
+          <div className="flex-1 p-4 flex flex-col gap-5 overflow-y-auto">
+            <section>
+              <p className="text-xs font-semibold mb-3" style={{ color: 'var(--color-text-muted)' }}>화면 배율</p>
+              <div className="flex items-center gap-3">
+                <span className="text-xs shrink-0" style={{ color: 'var(--color-text-muted)' }}>50%</span>
+                <input type="range" min={50} max={150} step={5} value={Math.round(appZoom * 100)}
+                  onChange={e => onZoomChange(Number(e.target.value) / 100)}
+                  className="flex-1 cursor-pointer" />
+                <span className="text-xs shrink-0" style={{ color: 'var(--color-text-muted)' }}>150%</span>
+              </div>
+              <div className="flex items-center justify-between mt-2">
+                <span className="text-sm font-bold" style={{ color: 'var(--color-primary-dark)' }}>{Math.round(appZoom * 100)}%</span>
+                <button onClick={() => onZoomChange(1.0)}
+                  className="text-xs px-3 py-1 rounded-full hover:opacity-80"
+                  style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>
+                  초기화 (100%)
+                </button>
+              </div>
+              <p className="text-xs mt-3" style={{ color: 'var(--color-text-muted)' }}>
+                Cmd + 스크롤로도 조절할 수 있어요.
+              </p>
+            </section>
+
+            {/* Global font */}
+            <section>
+              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>전체 폰트</p>
+              <div className="relative">
+                <button
+                  onClick={() => setShowFontList(v => !v)}
+                  className="w-full text-left text-xs px-3 py-2 rounded-lg hover:opacity-80"
+                  style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)', fontFamily: globalFont ? `'${globalFont}'` : undefined }}>
+                  {globalFont || '시스템 기본 폰트'} ▾
+                </button>
+                {showFontList && (
+                  <div className="absolute top-full left-0 right-0 z-50 rounded-xl shadow-xl overflow-hidden mt-1"
+                    style={{ background: '#fff', border: '1px solid var(--color-border)', maxHeight: 220 }}>
+                    <input autoFocus type="text" placeholder="폰트 검색..." value={fontSearch}
+                      onChange={e => setFontSearch(e.target.value)}
+                      className="w-full text-xs px-3 py-2 outline-none"
+                      style={{ borderBottom: '1px solid var(--color-border)' }} />
+                    <div className="overflow-y-auto" style={{ maxHeight: 170 }}>
+                      <button
+                        onClick={() => { onGlobalFontChange(''); setShowFontList(false); setFontSearch(''); applyGlobalFont('') }}
+                        className="w-full text-left text-xs px-3 py-1.5 hover:bg-pink-50"
+                        style={{ color: 'var(--color-text-muted)' }}>
+                        시스템 기본 폰트 (초기화)
+                      </button>
+                      {filteredFonts.map(f => (
+                        <button key={f}
+                          onClick={() => { onGlobalFontChange(f); setShowFontList(false); setFontSearch(''); applyGlobalFont(f) }}
+                          className="w-full text-left text-xs px-3 py-1.5 hover:bg-pink-50 truncate"
+                          style={{ fontFamily: `'${f}'`, background: globalFont === f ? 'var(--color-primary-light)' : undefined, color: 'var(--color-text)' }}>
+                          {f}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section>
+              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>글자 기본 크기</p>
+              <div className="flex items-center justify-between text-sm mb-1" style={{ color: 'var(--color-text)' }}>
+                <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{fontScale.toFixed(1)}x</span>
+                <button onClick={() => onFontScaleChange(1)} className="text-xs hover:opacity-70"
+                  style={{ color: 'var(--color-text-muted)' }}>초기화</button>
+              </div>
+              <input type="range" min="0.5" max="3" step="0.1"
+                value={fontScale}
+                onChange={e => onFontScaleChange(Number(e.target.value))}
+                className="w-full cursor-pointer" />
+            </section>
+
+            <section>
+              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>폰트 세로 위치 미세 조정</p>
+              <div className="flex items-center justify-between text-sm mb-1" style={{ color: 'var(--color-text)' }}>
+                <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{fontOffsetY}px</span>
+                <button onClick={() => onFontOffsetYChange(0)} className="text-xs hover:opacity-70"
+                  style={{ color: 'var(--color-text-muted)' }}>초기화</button>
+              </div>
+              <input type="range" min="-20" max="20" step="1"
+                value={fontOffsetY}
+                onChange={e => onFontOffsetYChange(Number(e.target.value))}
+                className="w-full cursor-pointer" />
+            </section>
 
             {/* Preset themes */}
             <section>
@@ -239,6 +412,8 @@ export default function SettingsPanel({
                           {activeThemeId === slot && <span className="text-xs" style={{ color: t.primaryDark }}>✓</span>}
                           <button onClick={() => startEdit(idx)} className="text-xs px-1.5 py-0.5 rounded hover:opacity-70"
                             style={{ color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}>편집</button>
+                          <button onClick={() => deleteCustom(idx)} className="text-xs px-1.5 py-0.5 rounded hover:opacity-70"
+                            style={{ color: '#e05555', border: '1px solid #e05555' }}>삭제</button>
                         </>
                       ) : (
                         <>
@@ -252,273 +427,107 @@ export default function SettingsPanel({
                 })}
               </div>
             </section>
-
-            {/* Global font */}
-            <section>
-              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>전체 폰트</p>
-              <div className="relative">
-                <button
-                  onClick={() => setShowFontList(v => !v)}
-                  className="w-full text-left text-xs px-3 py-2 rounded-lg hover:opacity-80"
-                  style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)', fontFamily: globalFont ? `'${globalFont}'` : undefined }}>
-                  {globalFont || '시스템 기본 폰트'} ▾
-                </button>
-                {showFontList && (
-                  <div className="absolute top-full left-0 right-0 z-50 rounded-xl shadow-xl overflow-hidden mt-1"
-                    style={{ background: '#fff', border: '1px solid var(--color-border)', maxHeight: 220 }}>
-                    <input autoFocus type="text" placeholder="폰트 검색..." value={fontSearch}
-                      onChange={e => setFontSearch(e.target.value)}
-                      className="w-full text-xs px-3 py-2 outline-none"
-                      style={{ borderBottom: '1px solid var(--color-border)' }} />
-                    <div className="overflow-y-auto" style={{ maxHeight: 170 }}>
-                      <button
-                        onClick={() => { onGlobalFontChange(''); setShowFontList(false); setFontSearch(''); applyGlobalFont('') }}
-                        className="w-full text-left text-xs px-3 py-1.5 hover:bg-pink-50"
-                        style={{ color: 'var(--color-text-muted)' }}>
-                        시스템 기본 폰트 (초기화)
-                      </button>
-                      {filteredFonts.map(f => (
-                        <button key={f}
-                          onClick={() => { onGlobalFontChange(f); setShowFontList(false); setFontSearch(''); applyGlobalFont(f) }}
-                          className="w-full text-left text-xs px-3 py-1.5 hover:bg-pink-50 truncate"
-                          style={{ fontFamily: `'${f}'`, background: globalFont === f ? 'var(--color-primary-light)' : undefined, color: 'var(--color-text)' }}>
-                          {f}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </section>
           </div>
         )}
 
-        {/* Tab: 화면 */}
-        {tab === 'display' && (
-          <div className="flex-1 p-4 flex flex-col gap-5">
-            <section>
-              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>다이어리 이름</p>
-              <input
-                type="text"
-                value={diaryName}
-                onChange={e => onDiaryNameChange(e.target.value)}
-                placeholder="on_diary"
-                className="w-full text-xs px-3 py-2 rounded-lg outline-none"
-                style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }}
-              />
-              <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                내보내기 파일명에 사용돼요. (예: {(diaryName || 'on_diary').replace(/\s+/g, '_')}_260524_2156.png)
-              </p>
-            </section>
-
-            <section>
-              <p className="text-xs font-semibold mb-3" style={{ color: 'var(--color-text-muted)' }}>화면 배율</p>
-              <div className="flex items-center gap-3">
-                <span className="text-xs shrink-0" style={{ color: 'var(--color-text-muted)' }}>50%</span>
-                <input type="range" min={50} max={150} step={5} value={Math.round(appZoom * 100)}
-                  onChange={e => onZoomChange(Number(e.target.value) / 100)}
-                  className="flex-1 cursor-pointer" />
-                <span className="text-xs shrink-0" style={{ color: 'var(--color-text-muted)' }}>150%</span>
-              </div>
-              <div className="flex items-center justify-between mt-2">
-                <span className="text-sm font-bold" style={{ color: 'var(--color-primary-dark)' }}>{Math.round(appZoom * 100)}%</span>
-                <button onClick={() => onZoomChange(1.0)}
-                  className="text-xs px-3 py-1 rounded-full hover:opacity-80"
-                  style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>
-                  초기화 (100%)
-                </button>
-              </div>
-              <p className="text-xs mt-3" style={{ color: 'var(--color-text-muted)' }}>
-                Cmd + 스크롤로도 조절할 수 있어요.
-              </p>
-            </section>
-
-            <section>
-              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>글자 기본 크기</p>
-              <div className="flex items-center justify-between text-sm mb-1" style={{ color: 'var(--color-text)' }}>
-                <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{fontScale.toFixed(1)}x</span>
-                <button onClick={() => onFontScaleChange(1)} className="text-xs hover:opacity-70"
-                  style={{ color: 'var(--color-text-muted)' }}>초기화</button>
-              </div>
-              <input type="range" min="0.5" max="3" step="0.1"
-                value={fontScale}
-                onChange={e => onFontScaleChange(Number(e.target.value))}
-                className="w-full cursor-pointer" />
-            </section>
-
-            <section>
-              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>폰트 세로 위치 미세 조정</p>
-              <div className="flex items-center justify-between text-sm mb-1" style={{ color: 'var(--color-text)' }}>
-                <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{fontOffsetY}px</span>
-                <button onClick={() => onFontOffsetYChange(0)} className="text-xs hover:opacity-70"
-                  style={{ color: 'var(--color-text-muted)' }}>초기화</button>
-              </div>
-              <input type="range" min="-20" max="20" step="1"
-                value={fontOffsetY}
-                onChange={e => onFontOffsetYChange(Number(e.target.value))}
-                className="w-full cursor-pointer" />
-            </section>
-
-            <section>
-              <p className="text-xs font-semibold mb-3" style={{ color: 'var(--color-text-muted)' }}>유령 모드 효과</p>
-              <div className="flex flex-col gap-4">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs" style={{ color: 'var(--color-text)' }}>모자이크 강도</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold" style={{ color: '#9c59d1' }}>{mosaicIntensity}</span>
-                      <button onClick={() => onMosaicIntensityChange(14)} className="text-xs hover:opacity-70"
-                        style={{ color: 'var(--color-text-muted)' }}>초기화</button>
-                    </div>
-                  </div>
-                  <input type="range" min={4} max={40} step={2} value={mosaicIntensity}
-                    onChange={e => onMosaicIntensityChange(Number(e.target.value))}
-                    className="w-full cursor-pointer" />
-                  <div className="flex justify-between mt-0.5">
-                    <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>세밀하게</span>
-                    <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>굵게</span>
-                  </div>
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs" style={{ color: 'var(--color-text)' }}>블러 강도</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold" style={{ color: '#9c59d1' }}>{blurIntensity}px</span>
-                      <button onClick={() => onBlurIntensityChange(12)} className="text-xs hover:opacity-70"
-                        style={{ color: 'var(--color-text-muted)' }}>초기화</button>
-                    </div>
-                  </div>
-                  <input type="range" min={2} max={40} step={1} value={blurIntensity}
-                    onChange={e => onBlurIntensityChange(Number(e.target.value))}
-                    className="w-full cursor-pointer" />
-                  <div className="flex justify-between mt-0.5">
-                    <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>약하게</span>
-                    <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>강하게</span>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section>
-              <p className="text-xs font-semibold mb-3" style={{ color: 'var(--color-text-muted)' }}>저장 위치</p>
-              <div className="rounded-xl px-3 py-2 mb-2 text-xs break-all" style={{ background: 'var(--color-primary-light)', color: 'var(--color-text)' }}>
-                {dbPath || '불러오는 중…'}
-              </div>
-              <div className="flex gap-2 mb-2">
-                <button
-                  className="flex-1 text-xs py-2 rounded-xl hover:opacity-80 font-medium"
-                  style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}
-                  onClick={async () => {
-                    try {
-                      const newPath = await api.db.pickDir()
-                      setDbPath(newPath)
-                      setDbPending(true)
-                    } catch {}
-                  }}>
-                  위치 변경
-                </button>
-                <button
-                  className="flex-1 text-xs py-2 rounded-xl hover:opacity-80 font-medium"
-                  style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}
-                  onClick={async () => {
-                    await api.db.resetPath().catch(() => {})
-                    const path = await api.db.getPath().catch(() => '')
-                    setDbPath(path)
-                    setDbPending(true)
-                  }}>
-                  기본값으로
-                </button>
-              </div>
-              {dbPending && (
-                <div className="rounded-xl px-3 py-2 flex items-center justify-between gap-2"
-                  style={{ background: 'var(--color-primary)', color: '#fff' }}>
-                  <span className="text-xs">재시작 후 적용돼요.</span>
-                  <button className="text-xs font-semibold underline hover:opacity-80"
-                    onClick={() => { invoke('window_close') }}>
-                    지금 종료
-                  </button>
-                </div>
-              )}
-            </section>
-
-            <section>
-              <p className="text-xs font-semibold mb-3" style={{ color: 'var(--color-text-muted)' }}>데이터 관리</p>
-              <div className="flex flex-col gap-2">
-                <button onClick={() => api.backup.export().catch(() => {})}
-                  className="w-full text-xs py-2 rounded-xl hover:opacity-80 font-medium"
-                  style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>
-                  백업 내보내기
-                </button>
-                <button onClick={() => api.backup.import().catch(() => {})}
-                  className="w-full text-xs py-2 rounded-xl hover:opacity-80 font-medium"
-                  style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>
-                  백업 불러오기
-                </button>
-              </div>
-              <p className="text-xs mt-2" style={{ color: 'var(--color-text-muted)' }}>
-                모든 일기·설정을 JSON 파일로 내보내거나 복원해요.
-              </p>
-            </section>
-          </div>
-        )}
-
-        {/* Tab: 스크랩 */}
-        {tab === 'scrap' && (
+        {/* Tab: 세부설정 */}
+        {tab === 'detail' && (
           <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Template picker */}
-            <div className="p-3 flex flex-wrap gap-1.5 shrink-0" style={{ borderBottom: '1px solid var(--color-border)' }}>
-              {SCRAP_TPL_LIST.map(t => (
-                <button key={t.id} onClick={() => setSelectedScrapTpl(t.id)}
-                  className="text-xs px-2 py-1 rounded-full"
-                  style={{
-                    background: selectedScrapTpl === t.id ? 'var(--color-primary)' : 'var(--color-primary-light)',
-                    color: selectedScrapTpl === t.id ? '#fff' : 'var(--color-primary-dark)',
-                    border: 'none', cursor: 'pointer',
-                  }}>
-                  {t.emoji} {t.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Fields for selected template */}
-            <div className="flex-1 p-4 overflow-y-auto">
-              {!selectedScrapTpl ? (
-                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                  위에서 카드를 선택하면 기본값을 설정할 수 있어요.
-                </p>
-              ) : (SCRAP_TPL_FIELDS[selectedScrapTpl]?.length ?? 0) === 0 ? (
-                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                  이 카드는 설정할 기본값이 없어요.
-                </p>
-              ) : (
-                <div className="flex flex-col gap-3">
-                  {SCRAP_TPL_FIELDS[selectedScrapTpl].map(({ key, label }) => (
-                    <div key={key}>
-                      <p className="text-xs font-semibold mb-1" style={{ color: 'var(--color-text-muted)' }}>{label}</p>
-                      <input
-                        type="text"
-                        value={allDefaults[selectedScrapTpl]?.[key] ?? ''}
-                        onChange={e => {
-                          const next: Record<string, Record<string, string>> = {
-                            ...allDefaults,
-                            [selectedScrapTpl]: { ...allDefaults[selectedScrapTpl], [key]: e.target.value },
-                          }
-                          setAllDefaults(next)
-                          api.settings.set('scrap_defaults', JSON.stringify(next)).catch(() => {})
-                        }}
-                        className="w-full text-xs px-2 py-1.5 rounded-lg outline-none"
-                        style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }}
-                      />
+            <div className="flex-1 p-4 flex flex-col gap-5 overflow-y-auto">
+              <section>
+                <p className="text-xs font-semibold mb-3" style={{ color: 'var(--color-text-muted)' }}>유령 모드 효과</p>
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs" style={{ color: 'var(--color-text)' }}>모자이크 강도</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold" style={{ color: '#9c59d1' }}>{mosaicIntensity}</span>
+                        <button onClick={() => onMosaicIntensityChange(14)} className="text-xs hover:opacity-70"
+                          style={{ color: 'var(--color-text-muted)' }}>초기화</button>
+                      </div>
                     </div>
+                    <input type="range" min={4} max={40} step={2} value={mosaicIntensity}
+                      onChange={e => onMosaicIntensityChange(Number(e.target.value))}
+                      className="w-full cursor-pointer" />
+                    <div className="flex justify-between mt-0.5">
+                      <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>세밀하게</span>
+                      <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>굵게</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs" style={{ color: 'var(--color-text)' }}>블러 강도</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold" style={{ color: '#9c59d1' }}>{blurIntensity}px</span>
+                        <button onClick={() => onBlurIntensityChange(12)} className="text-xs hover:opacity-70"
+                          style={{ color: 'var(--color-text-muted)' }}>초기화</button>
+                      </div>
+                    </div>
+                    <input type="range" min={2} max={40} step={1} value={blurIntensity}
+                      onChange={e => onBlurIntensityChange(Number(e.target.value))}
+                      className="w-full cursor-pointer" />
+                    <div className="flex justify-between mt-0.5">
+                      <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>약하게</span>
+                      <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>강하게</span>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section>
+                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>스크랩 옵션</p>
+                {/* Template picker */}
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {SCRAP_TPL_LIST.map(t => (
+                    <button key={t.id} onClick={() => setSelectedScrapTpl(t.id)}
+                      className="text-xs px-2 py-1 rounded-full"
+                      style={{
+                        background: selectedScrapTpl === t.id ? 'var(--color-primary)' : 'var(--color-primary-light)',
+                        color: selectedScrapTpl === t.id ? '#fff' : 'var(--color-primary-dark)',
+                        border: 'none', cursor: 'pointer',
+                      }}>
+                      {t.emoji} {t.label}
+                    </button>
                   ))}
                 </div>
-              )}
+                {!selectedScrapTpl ? (
+                  <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                    카드를 선택하면 기본값을 설정할 수 있어요.
+                  </p>
+                ) : (SCRAP_TPL_FIELDS[selectedScrapTpl]?.length ?? 0) === 0 ? (
+                  <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                    이 카드는 설정할 기본값이 없어요.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    {SCRAP_TPL_FIELDS[selectedScrapTpl].map(({ key, label }) => (
+                      <div key={key}>
+                        <p className="text-xs font-semibold mb-1" style={{ color: 'var(--color-text-muted)' }}>{label}</p>
+                        <input
+                          type="text"
+                          value={allDefaults[selectedScrapTpl]?.[key] ?? ''}
+                          onChange={e => {
+                            const next: Record<string, Record<string, string>> = {
+                              ...allDefaults,
+                              [selectedScrapTpl]: { ...allDefaults[selectedScrapTpl], [key]: e.target.value },
+                            }
+                            setAllDefaults(next)
+                            api.settings.set('scrap_defaults', JSON.stringify(next)).catch(() => {})
+                          }}
+                          className="w-full text-xs px-2 py-1.5 rounded-lg outline-none"
+                          style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
             </div>
           </div>
         )}
 
         {/* Custom theme editor */}
-        {editIdx !== null && tab === 'theme' && (
+        {editIdx !== null && tab === 'display' && (
           <div className="shrink-0 border-t p-4 flex flex-col gap-3"
             style={{ borderColor: 'var(--color-border)', background: 'rgba(255,255,255,0.6)' }}>
             <p className="text-xs font-bold" style={{ color: 'var(--color-text)' }}>{CUSTOM_LABELS[editIdx]} 편집</p>

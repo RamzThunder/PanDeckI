@@ -1,10 +1,11 @@
-# On Diary — 프로젝트 컨텍스트
+# dida — 프로젝트 컨텍스트
 
 ## Claude 행동 규칙
 - **푸쉬 전 CLAUDE.md 동기화**: `git push` 요청이 오면, 이번 작업에서 변경된 내용(새 기능, 타입 변경, 커맨드 추가, 설정 키 추가 등)이 있을 경우 CLAUDE.md를 먼저 업데이트한 뒤 푸쉬한다.
 
 ## 앱 개요
 개인 디지털 다이어리 데스크톱 앱. 자유 캔버스 꾸미기 스타일.
+**앱 이름**: dida (구 On Diary) — `productName`, `package.json name`, 창 타이틀 모두 "dida"로 변경됨.
 
 ## 기술 스택
 - **프레임워크**: Tauri 2 (Rust 백엔드 + WKWebView 프론트엔드)
@@ -31,13 +32,13 @@ src/
   api.ts                   # Tauri invoke 래퍼 — 아래 api 네임스페이스 목록 참고
   store/
     diary.ts               # useDiaryNav 훅, ViewMode = 'monthly' | 'daily'
-    theme.ts               # PRESET_THEMES (5종), applyTheme(), applyGlobalFont()
+    theme.ts               # PRESET_THEMES (4종: 하늘색·딸기핑크·흑백·다크), applyTheme(), applyGlobalFont()
   pages/
     DailyView.tsx          # 자유 캔버스 뷰 (메인 꾸미기 화면, ~2300줄)
     MonthlyView.tsx        # 월간 캘린더 + 목표/버킷리스트
   components/
     Sidebar.tsx            # 좌측 사이드바 (월간/일간 탭, 설정 버튼)
-    SettingsPanel.tsx      # 우측 설정 패널 (테마/화면 탭) — 백업 버튼 포함
+    SettingsPanel.tsx      # 우측 설정 패널 (정보/화면/세부설정 탭) — 커스텀 테마 삭제 기능 포함
     ThemePanel.tsx         # 테마 편집 패널 (SettingsPanel 내부에서 사용)
     StickerPicker.tsx      # PNG 스티커팩 피커 (폴더 기반)
     CropModal.tsx          # 사진 크롭 모달 (고정 프레임/자유형, PNG 마스크 모양)
@@ -141,7 +142,7 @@ export interface DailyData {
 - **카드/스크랩**: TemplateModal로 편집하는 구조화된 카드 요소
 - **회전 스냅**: Shift 누른 채 핸들 회전 시 15° 단위로 스냅
 - **클립보드 붙여넣기**: Cmd+V로 이미지→사진요소, 텍스트→텍스트요소
-- **테마**: 5 프리셋 + 5 커스텀 슬롯, CSS 변수 기반 (`--color-primary` 등)
+- **테마**: 4 프리셋(하늘색·딸기핑크·흑백·다크, 기본=하늘색) + 5 커스텀 슬롯(삭제 가능), CSS 변수 기반 (`--color-primary` 등)
 - **앱 줌**: Cmd+스크롤 또는 설정 슬라이더 (50~150%), settings DB에 영속
 - **PNG 내보내기**: 캔버스를 PNG로 저장 (`save_png` 커맨드)
 - **화면 캡처**: Python Quartz로 CGWindowID 획득 → `screencapture -l <wid> -x` 로 그림자 포함 알파채널 PNG 캡처 (투명 코너 + 네이티브 그림자 보존)

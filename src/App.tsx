@@ -18,7 +18,7 @@ function resizeWindow(zoom: number) {
 export default function App(): JSX.Element {
   const nav = useDiaryNav()
   const [showSettings, setShowSettings] = useState(false)
-  const [activeThemeId, setActiveThemeId] = useState('strawberry')
+  const [activeThemeId, setActiveThemeId] = useState('sky')
   const [systemFonts, setSystemFonts] = useState<string[]>([])
   const [appZoom, setAppZoom] = useState(1.0)
   const [globalFont, setGlobalFont] = useState('')
@@ -34,7 +34,7 @@ export default function App(): JSX.Element {
   useEffect(() => {
     async function loadSettings() {
       const savedTheme = await api.settings.get('active_theme').catch(() => null)
-      const id = savedTheme ?? 'strawberry'
+      const id = savedTheme ?? 'sky'
       setActiveThemeId(id)
       const preset = PRESET_THEMES.find(t => t.id === id)
       if (preset) {

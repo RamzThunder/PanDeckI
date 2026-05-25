@@ -1,7 +1,7 @@
 {
-  "name": "on-diary",
+  "name": "dida",
   "version": "1.0.0",
-  "description": "A beautiful digital diary app",
+  "description": "dida — digital diary",
   "type": "module",
   "scripts": {
     "dev": "vite",
