@@ -243,6 +243,21 @@ fetch_text, fetch_image_b64
 open_url
 ```
 
+## 자동 업데이트 (Auto-Update)
+- **방식**: GitHub Releases + `tauri-plugin-updater` (서명 키 기반, Apple 개발자 계정 불필요)
+- **서명 키**: `~/.tauri/on-diary.key` (로컬), 공개키는 `tauri.conf.json`에 포함
+- **GitHub Secret**: `TAURI_SIGNING_PRIVATE_KEY` (비밀번호 없음)
+- **릴리즈 방법**: 버전 태그 푸쉬 → GitHub Actions 자동 빌드 (ARM64 + x86_64)
+  ```bash
+  # 1. package.json / tauri.conf.json 버전 올리기
+  # 2. 커밋 후 태그 푸쉬
+  git tag v1.0.1
+  git push origin v1.0.1
+  ```
+- **엔드포인트**: `https://github.com/RamzThunder/on-diary/releases/latest/download/latest.json`
+- **macOS 최초 실행**: 우클릭 → 열기 (또는 `xattr -dr com.apple.quarantine "/Applications/On Diary.app"`)
+- **워크플로우**: `.github/workflows/release.yml`
+
 ## 성능 관련 주의사항
 - **base64 이미지**: CanvasEl의 `content`에 base64 dataURL을 저장하므로 엔트리 JSON이 매우 커질 수 있음
 - **월간 뷰 배경 로딩**: `list_month_bgs`로 SQLite `json_extract`를 써서 bg/bgImage만 추출 (풀 엔트리 로드 금지)
