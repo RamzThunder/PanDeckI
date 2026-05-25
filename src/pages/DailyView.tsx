@@ -27,6 +27,9 @@ export interface CanvasEl {
   opacity: number
   content: string
   fontSize: number; color: string; bold: boolean; italic: boolean
+  underline?: boolean; strikethrough?: boolean
+  letterSpacing?: number
+  lineHeight?: number
   fontFamily: string
   bgColor: string; bgOpacity: number
   align: 'left' | 'center' | 'right'
@@ -506,6 +509,8 @@ const ICONS: Record<string, React.ReactNode> = {
 
   bold: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></svg>,
   italic: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>,
+  underline: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 4v6a6 6 0 0 0 12 0V4"/><line x1="4" y1="21" x2="20" y2="21"/></svg>,
+  strikethrough: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4H9a3 3 0 0 0-2.83 4M14 12a4 4 0 0 1 0 8H6"/><line x1="4" y1="12" x2="20" y2="12"/></svg>,
 
   // 2. 다중 선택 정렬
   formatPainter: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 4H7a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z M12 12v9 M9 21h6"/></svg>,
@@ -751,6 +756,8 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
       z: maxZ + 1, rotation: 0, opacity: src.opacity,
       content: '텍스트를 입력하세요',
       fontSize: src.fontSize, color: src.color, bold: src.bold, italic: src.italic,
+      underline: src.underline, strikethrough: src.strikethrough,
+      letterSpacing: src.letterSpacing, lineHeight: src.lineHeight,
       fontFamily: src.fontFamily, bgColor: src.bgColor, bgOpacity: src.bgOpacity,
       align: src.align, alignV: src.alignV, textRadius: src.textRadius,
       borderWidth: src.borderWidth, borderColor: src.borderColor,
@@ -823,11 +830,13 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
           ctx.stroke()
         }
         const pad = 6, fs = el.fontSize
+        const lh = fs * (el.lineHeight ?? 1.4)
         ctx.font = `${el.italic ? 'italic ' : ''}${el.bold ? 'bold ' : ''}${fs}px ${el.fontFamily}`
+        ;(ctx as any).letterSpacing = `${el.letterSpacing ?? 0}px`
         ctx.fillStyle = el.color; ctx.textBaseline = 'top'
         ctx.textAlign = el.align as CanvasTextAlign
         const textX = el.align === 'left' ? pad : el.align === 'center' ? el.w / 2 : el.w - pad
-        const maxW = el.w - pad * 2, lh = fs * 1.4
+        const maxW = el.w - pad * 2
         const allLines: string[] = []
         for (const para of el.content.split('\n')) {
           if (!para) { allLines.push(''); continue }
@@ -841,7 +850,20 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
         }
         const totalH = allLines.length * lh
         const startY = el.alignV === 'top' ? pad : el.alignV === 'middle' ? (el.h - totalH) / 2 : el.h - totalH - pad
-        allLines.forEach((line, i) => ctx.fillText(line, textX, startY + i * lh))
+        allLines.forEach((line, i) => {
+          const y = startY + i * lh
+          ctx.fillText(line, textX, y)
+          if (el.underline || el.strikethrough) {
+            const lw2 = ctx.measureText(line).width
+            const lineStartX = el.align === 'left' ? textX : el.align === 'center' ? textX - lw2 / 2 : textX - lw2
+            ctx.save()
+            ctx.strokeStyle = el.color
+            ctx.lineWidth = Math.max(1, fs * 0.06)
+            if (el.underline) { ctx.beginPath(); ctx.moveTo(lineStartX, y + fs * 1.08); ctx.lineTo(lineStartX + lw2, y + fs * 1.08); ctx.stroke() }
+            if (el.strikethrough) { ctx.beginPath(); ctx.moveTo(lineStartX, y + fs * 0.5); ctx.lineTo(lineStartX + lw2, y + fs * 0.5); ctx.stroke() }
+            ctx.restore()
+          }
+        })
       } else if (el.type === 'sticker' || el.type === 'photo') {
         try {
           const img = await loadImg(el.content)
@@ -1788,6 +1810,9 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                         fontSize: `${el.fontSize}px`,
                         color: el.color,
                         fontWeight: el.bold ? 'bold' : 'normal', fontStyle: el.italic ? 'italic' : 'normal',
+                        textDecoration: [el.underline && 'underline', el.strikethrough && 'line-through'].filter(Boolean).join(' ') || 'none',
+                        letterSpacing: `${el.letterSpacing ?? 0}px`,
+                        lineHeight: el.lineHeight ?? 1.4,
                         fontFamily: el.fontFamily,
                         background: el.bgOpacity > 0 ? hexToRgba(el.bgColor, el.bgOpacity) : 'rgba(255,255,255,0.75)',
                         border: bw > 0 ? `${bw}px solid ${el.borderColor ?? '#333333'}` : 'none',
@@ -1808,6 +1833,9 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                         fontSize: `${el.fontSize}px`,
                         color: el.color,
                         fontWeight: el.bold ? 'bold' : 'normal', fontStyle: el.italic ? 'italic' : 'normal',
+                        textDecoration: [el.underline && 'underline', el.strikethrough && 'line-through'].filter(Boolean).join(' ') || 'none',
+                        letterSpacing: `${el.letterSpacing ?? 0}px`,
+                        lineHeight: el.lineHeight ?? 1.4,
                         fontFamily: el.fontFamily,
                         textAlign: el.align, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                       }}>{el.content}</div>
@@ -2069,9 +2097,9 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
           const ch = canvasRef.current?.clientHeight ?? 900 // 👈 캔버스 높이
           const cw = canvasRef.current?.clientWidth ?? 1600 // 👈 캔버스 너비
           
-          const TOOLBAR_H = selectedEl.type === 'text' ? 120 : 44
+          const TOOLBAR_H = selectedEl.type === 'text' ? 158 : 44
           const TOOLBAR_W = selectedEl.type === 'text'
-              ? 460
+              ? 480
               : selectedEl.type === 'photo'
                 ? 600
                 : 410
@@ -2105,13 +2133,12 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
               onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
 
               {selectedEl.type === 'text' && (<>
-                {/* Row 1: 글씨 설정 */}
+                {/* Row 1: 글꼴 조정 */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
 
                   {/* 폰트 사이즈 하이브리드 콤보박스 */}
                   <div className="relative" style={{ flexShrink: 0 }}>
                     <div style={{ display: 'flex', border: '1px solid var(--color-border)', borderRadius: 4, height: 28, width: 50, background: 'white', overflow: 'hidden' }}>
-                      {/* 왼쪽: text 타입으로 네이티브 화살표 원천 차단 + ▾ 오버레이 */}
                       <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center' }}>
                         <input
                           type="text" inputMode="numeric"
@@ -2125,7 +2152,6 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                           style={{ width: '100%', height: '100%', border: 'none', outline: 'none', textAlign: 'center', fontSize: 11, padding: '0 8px 0 2px', background: 'transparent' }}
                         />
                       </div>
-                      {/* 오른쪽: 네이티브 스피너 해킹 (스피너만 보이게 클리핑) */}
                       <div style={{ borderLeft: '1px solid var(--color-border)', width: 16, position: 'relative', background: '#f9f9f9', overflow: 'hidden' }}>
                         <input
                           type="number" min={6} max={200}
@@ -2159,9 +2185,9 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
 
                   <div className="relative" style={{ flexShrink: 0 }}>
                     <button onClick={() => setShowFontList(v => !v)}
-                      style={{ height: 28, fontSize: 11, padding: '0 5px', borderRadius: 4, border: '1px solid var(--color-border)', background: 'white', maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}
+                      style={{ height: 28, fontSize: 11, padding: '0 5px', borderRadius: 4, border: '1px solid var(--color-border)', background: 'white', maxWidth: 85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}
                       title={selectedEl.fontFamily}>
-                      {selectedEl.fontFamily.split(',')[0].replace(/'/g, '').trim().slice(0, 9)}▾
+                      {selectedEl.fontFamily.split(',')[0].replace(/'/g, '').trim().slice(0, 8)}▾
                     </button>
                     {showFontList && (
                       <div className="absolute z-50 flex flex-col rounded-xl shadow-xl overflow-hidden"
@@ -2188,13 +2214,36 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                     <div style={{ width: 14, height: 14, borderRadius: '50%', background: textColorInput || selectedEl.color, border: '1px solid var(--color-border)', flexShrink: 0 }} />
                     <input type="text" value={textColorInput} placeholder="#4A3F3F"
                       onChange={e => { setTextColorInput(e.target.value); if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) updateEl(selectedEl.id, { color: e.target.value }) }}
-                      style={{ height: 28, fontSize: 11, padding: '0 4px', borderRadius: 4, border: '1px solid var(--color-border)', width: 55 }} />
+                      style={{ height: 28, fontSize: 11, padding: '0 4px', borderRadius: 4, border: '1px solid var(--color-border)', width: 52 }} />
                   </div>
 
                   {vSep}
 
                   {rowBtn(ICONS.bold, '굵게', () => updateEl(selectedEl.id, { bold: !selectedEl.bold }), selectedEl.bold)}
                   {rowBtn(ICONS.italic, '기울임', () => updateEl(selectedEl.id, { italic: !selectedEl.italic }), selectedEl.italic)}
+                  {rowBtn(ICONS.underline, '밑줄', () => updateEl(selectedEl.id, { underline: !selectedEl.underline }), !!selectedEl.underline)}
+                  {rowBtn(ICONS.strikethrough, '취소선', () => updateEl(selectedEl.id, { strikethrough: !selectedEl.strikethrough }), !!selectedEl.strikethrough)}
+
+                  {vSep}
+
+                  <span style={{ fontSize: 10, color: 'var(--color-text-muted)', flexShrink: 0 }}>자간</span>
+                  <input type="range" min={-5} max={20} step={0.5} value={selectedEl.letterSpacing ?? 0}
+                    onChange={e => updateEl(selectedEl.id, { letterSpacing: Number(e.target.value) })}
+                    style={{ width: 52, height: 4, cursor: 'pointer', flexShrink: 0 }} />
+                  <span style={{ fontSize: 10, color: 'var(--color-primary-dark)', minWidth: 20, flexShrink: 0 }}>{selectedEl.letterSpacing ?? 0}</span>
+
+                </div>
+
+                {hSep}
+
+                {/* Row 2: 문장 조정 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+
+                  <span style={{ fontSize: 10, color: 'var(--color-text-muted)', flexShrink: 0 }}>줄간격</span>
+                  <input type="range" min={0.8} max={3.0} step={0.05} value={selectedEl.lineHeight ?? 1.4}
+                    onChange={e => updateEl(selectedEl.id, { lineHeight: Number(e.target.value) })}
+                    style={{ width: 60, height: 4, cursor: 'pointer', flexShrink: 0 }} />
+                  <span style={{ fontSize: 10, color: 'var(--color-primary-dark)', minWidth: 24, flexShrink: 0 }}>{(selectedEl.lineHeight ?? 1.4).toFixed(2)}</span>
 
                   {vSep}
 
@@ -2220,35 +2269,35 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
 
                 {hSep}
 
-                {/* Row 2: 문단 설정 */}
+                {/* Row 3: 텍스트 박스 조정 */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'center', width: '100%'}}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
                     <div style={{ width: 14, height: 14, borderRadius: 3, background: bgColorInput || selectedEl.bgColor, border: '1px solid var(--color-border)', flexShrink: 0 }} />
                     <input type="text" value={bgColorInput} placeholder="#ffffff"
                       onChange={e => { setBgColorInput(e.target.value); if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) updateEl(selectedEl.id, { bgColor: e.target.value, bgOpacity: selectedEl.bgOpacity === 0 ? 80 : selectedEl.bgOpacity }) }}
-                      style={{ height: 28, fontSize: 11, padding: '0 4px', borderRadius: 4, border: '1px solid var(--color-border)', width: 55 }} />
+                      style={{ height: 28, fontSize: 11, padding: '0 4px', borderRadius: 4, border: '1px solid var(--color-border)', width: 52 }} />
                     <span style={{ fontSize: 10, color: 'var(--color-text-muted)', flexShrink: 0 }}>배경</span>
                     <input type="range" min={0} max={100} value={selectedEl.bgOpacity}
                       onChange={e => updateEl(selectedEl.id, { bgOpacity: Number(e.target.value) })}
-                      style={{ width: 48, height: 4, cursor: 'pointer', flexShrink: 0 }} />
+                      style={{ width: 44, height: 4, cursor: 'pointer', flexShrink: 0 }} />
                   </div>
                   {vSep}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
                     <span style={{ fontSize: 10, color: 'var(--color-text-muted)', flexShrink: 0 }}>테두리</span>
                     <input type="range" min={0} max={8} value={selectedEl.borderWidth ?? 0}
                       onChange={e => updateEl(selectedEl.id, { borderWidth: Number(e.target.value) })}
-                      style={{ width: 40, height: 4, cursor: 'pointer', flexShrink: 0 }} />
+                      style={{ width: 36, height: 4, cursor: 'pointer', flexShrink: 0 }} />
                     <div style={{ width: 14, height: 14, borderRadius: '50%', background: borderColorInput || selectedEl.borderColor, border: '1px solid var(--color-border)', flexShrink: 0 }} />
                     <input type="text" value={borderColorInput} placeholder="#333333"
                       onChange={e => { setBorderColorInput(e.target.value); if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) updateEl(selectedEl.id, { borderColor: e.target.value }) }}
-                      style={{ height: 28, fontSize: 11, padding: '0 4px', borderRadius: 4, border: '1px solid var(--color-border)', width: 55 }} />
+                      style={{ height: 28, fontSize: 11, padding: '0 4px', borderRadius: 4, border: '1px solid var(--color-border)', width: 52 }} />
                   </div>
                   {vSep}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
                     <span style={{ fontSize: 10, color: 'var(--color-text-muted)', flexShrink: 0 }}>모서리</span>
                     <input type="range" min={0} max={40} value={selectedEl.textRadius ?? 0}
                       onChange={e => updateEl(selectedEl.id, { textRadius: Number(e.target.value) })}
-                      style={{ width: 40, height: 4, cursor: 'pointer', flexShrink: 0 }} />
+                      style={{ width: 36, height: 4, cursor: 'pointer', flexShrink: 0 }} />
                     <span style={{ fontSize: 10, color: 'var(--color-primary-dark)', minWidth: 22, flexShrink: 0 }}>{selectedEl.textRadius ?? 0}px</span>
                   </div>
                   {vSep}
@@ -2258,7 +2307,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                 {hSep}
               </>)}
 
-              {/* Common row (Row 3 for text, only row for others) */}
+              {/* Row 4 for text / only row for others: 전체 공통 툴바 */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'center', width: '100%' }}>
                 {selectedEl.type === 'photo' && (<>
                   <button onClick={() => setCropTarget(selectedEl.id)}

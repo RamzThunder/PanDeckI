@@ -64,6 +64,9 @@ export interface CanvasEl {
 
   // 텍스트 전용
   fontSize: number; color: string; bold: boolean; italic: boolean
+  underline?: boolean; strikethrough?: boolean
+  letterSpacing?: number   // 자간 (px, 기본 0)
+  lineHeight?: number      // 줄간격 배율 (기본 1.4)
   fontFamily: string
   bgColor: string; bgOpacity: number   // 배경색 + 불투명도 (0=투명)
   align: 'left' | 'center' | 'right'
@@ -123,7 +126,7 @@ export interface DailyData {
 - **잠금**: 요소별 잠금(locked) — 선택/이동 불가, 우클릭 메뉴로 토글
 - **뒤집기**: 좌우(flipH)/상하(flipV) 반전
 - **링크**: 요소에 URL 첨부 → 더블클릭 시 브라우저로 열기
-- **텍스트**: 폰트/크기/색상/굵기/기울임/가로정렬/세로정렬/배경색(불투명도)/테두리/모서리
+- **텍스트**: 폰트/크기/색상/굵기/기울임/밑줄/취소선/자간/줄간격/가로정렬/세로정렬/배경색(불투명도)/테두리/모서리. 툴바 4행 구조: 글꼴조정|문장조정|텍스트박스조정|전체공통
 - **시스템 폰트**: macOS=NSFontManager(Python 경유), Windows=PowerShell+InstalledFontCollection, 검색 가능
 - **전체 폰트**: 설정 패널에서 앱 전체 폰트 변경 (`applyGlobalFont`)
 - **PNG 스티커팩**: `sticker/` 폴더 내 하위 폴더 = 팩, 자동 감지
