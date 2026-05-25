@@ -48,33 +48,131 @@ const COLOR_FIELDS: { key: keyof Theme; label: string }[] = [
 
 type Tab = 'info' | 'display' | 'detail'
 
-const SCRAP_TPL_FIELDS: Record<string, { key: string; label: string }[]> = {
-  baseball:  [{ key:'away', label:'원정팀' }, { key:'venue', label:'경기장' }, { key:'seat', label:'좌석' }],
-  ticket:    [{ key:'venue', label:'장소' }, { key:'seat', label:'좌석' }, { key:'price', label:'가격' }],
-  game:      [{ key:'title', label:'게임 이름' }],
-  receipt:   [{ key:'store', label:'가게 이름' }, { key:'footer', label:'하단 문구' }],
-  wishlist:  [{ key:'item', label:'아이템 이름' }, { key:'price', label:'가격' }],
-  transport: [{ key:'from', label:'출발지' }, { key:'to', label:'도착지' }, { key:'seat', label:'좌석' }],
-  checkin:   [{ key:'place', label:'장소 이름' }, { key:'category', label:'카테고리' }],
-  coffee:    [{ key:'roastery', label:'로스터리' }, { key:'equipment', label:'추출 도구' }],
-  food_note: [{ key:'restaurant', label:'식당 이름' }, { key:'comment', label:'기본 한줄평' }],
-  youtube:   [],
-  quote:     [{ key:'source', label:'출처' }, { key:'author', label:'작가/저자' }],
-  music:     [{ key:'artist', label:'아티스트' }],
+type ScrapFieldType = 'text' | 'select' | 'boolean' | 'color' | 'number'
+interface ScrapField { key: string; label: string; type?: ScrapFieldType; options?: string[] }
+
+const SCRAP_TPL_FIELDS: Record<string, ScrapField[]> = {
+  baseball: [
+    { key: 'away',    label: '원정팀' },
+    { key: 'venue',   label: '경기장' },
+    { key: 'seat',    label: '좌석' },
+    { key: 'memo',    label: '메모' },
+    { key: 'isAway',  label: '원정 경기', type: 'boolean' },
+  ],
+  ticket: [
+    { key: 'category', label: '카테고리', type: 'select', options: ['영화', '공연', '전시', '스포츠', '기타'] },
+    { key: 'venue',    label: '장소' },
+    { key: 'seat',     label: '좌석' },
+    { key: 'price',    label: '가격' },
+  ],
+  game: [
+    { key: 'title',      label: '게임 이름' },
+    { key: 'oneiner',    label: '한줄평' },
+    { key: 'frameColor', label: '프레임 색상', type: 'color' },
+  ],
+  receipt: [
+    { key: 'store',  label: '가게 이름' },
+    { key: 'footer', label: '하단 문구' },
+  ],
+  wishlist: [
+    { key: 'item',      label: '아이템 이름' },
+    { key: 'price',     label: '가격' },
+    { key: 'oneiner',   label: '한줄평' },
+    { key: 'link',      label: '링크 URL' },
+    { key: 'wishScore', label: '원하는 정도 (1~5)', type: 'number' },
+  ],
+  transport: [
+    { key: 'type',          label: '교통 수단', type: 'select', options: ['KTX', '비행기', '버스', '지하철', '배', '기타'] },
+    { key: 'typeLabel',     label: '호선 / 노선명' },
+    { key: 'from',          label: '출발지' },
+    { key: 'to',            label: '도착지' },
+    { key: 'seat',          label: '좌석' },
+    { key: 'price',         label: '가격' },
+    { key: 'vehicleNumber', label: '차량 번호' },
+  ],
+  checkin: [
+    { key: 'place',      label: '장소 이름' },
+    { key: 'category',   label: '카테고리' },
+    { key: 'address',    label: '주소' },
+    { key: 'purpose',    label: '방문 목적' },
+    { key: 'companions', label: '동행인' },
+    { key: 'memo',       label: '메모' },
+    { key: 'rating',     label: '별점 (0~5)', type: 'number' },
+    { key: 'link',       label: '링크 URL' },
+  ],
+  coffee: [
+    { key: 'roastery',  label: '로스터리' },
+    { key: 'bean',      label: '원두' },
+    { key: 'equipment', label: '추출 도구' },
+    { key: 'beanGrams', label: '원두 (g)',    type: 'number' },
+    { key: 'waterMl',   label: '물 (ml)',     type: 'number' },
+    { key: 'brewTime',  label: '추출 시간(초)', type: 'number' },
+    { key: 'note',      label: '노트' },
+    { key: 'isIced',    label: '아이스', type: 'boolean' },
+  ],
+  food_note: [
+    { key: 'dish',       label: '음식 이름' },
+    { key: 'restaurant', label: '식당 이름' },
+    { key: 'comment',    label: '한줄평' },
+    { key: 'matColor',   label: '매트 색상', type: 'color' },
+  ],
+  youtube: [
+    { key: 'impression', label: '감상평' },
+  ],
+  quote: [
+    { key: 'source', label: '출처' },
+    { key: 'author', label: '작가/저자' },
+    { key: 'memo',   label: '메모' },
+    { key: 'layout', label: '레이아웃', type: 'select', options: ['quote', 'manuscript'] },
+  ],
+  music: [
+    { key: 'artist', label: '아티스트' },
+    { key: 'lyric',  label: '가사' },
+  ],
+  makeup: [
+    { key: 'sun',               label: '선크림' },
+    { key: 'base',              label: '베이스' },
+    { key: 'shading',           label: '쉐이딩' },
+    { key: 'eyeShadow',         label: '아이섀도우' },
+    { key: 'eyeLiner',          label: '아이라이너' },
+    { key: 'eyeMascara',        label: '마스카라' },
+    { key: 'underShadow',       label: '언더 섀도우' },
+    { key: 'underMascara',      label: '언더 마스카라' },
+    { key: 'underHighlighter',  label: '언더 하이라이터' },
+    { key: 'highlighter',       label: '하이라이터' },
+    { key: 'blush',             label: '블러셔' },
+    { key: 'lip',               label: '립' },
+    { key: 'mood',              label: '무드' },
+    { key: 'comment',           label: '코멘트' },
+    { key: 'rating',            label: '만족도 (1~5)', type: 'number' },
+  ],
+  skincare: [
+    { key: 'time',      label: 'AM / PM', type: 'select', options: ['AM', 'PM'] },
+    { key: 'condition', label: '피부 컨디션' },
+    { key: 'weather',   label: '날씨' },
+    { key: 'toner',     label: '토너' },
+    { key: 'serum',     label: '세럼' },
+    { key: 'cream',     label: '크림' },
+    { key: 'special',   label: '스페셜 케어' },
+    { key: 'memo',      label: '메모' },
+  ],
 }
 
 const SCRAP_TPL_LIST = [
-  { id: 'baseball',  emoji: '⚾', label: '야구 직관' },
-  { id: 'ticket',    emoji: '🎬', label: '티켓' },
-  { id: 'game',      emoji: '🎮', label: '게임' },
-  { id: 'receipt',   emoji: '🧾', label: '영수증' },
-  { id: 'wishlist',  emoji: '✦',  label: '위시리스트' },
-  { id: 'transport', emoji: '🚀', label: '교통수단' },
-  { id: 'checkin',   emoji: '📍', label: '체크인' },
-  { id: 'coffee',    emoji: '☕', label: '커피' },
-  { id: 'food_note', emoji: '🍴', label: '먹은 것' },
-  { id: 'quote',     emoji: '"', label: '문장 수집' },
-  { id: 'music',     emoji: '♪',  label: '음악' },
+  { id: 'baseball',  label: '야구 직관' },
+  { id: 'ticket',    label: '티켓' },
+  { id: 'game',      label: '게임' },
+  { id: 'receipt',   label: '영수증' },
+  { id: 'wishlist',  label: '위시리스트' },
+  { id: 'transport', label: '교통수단' },
+  { id: 'checkin',   label: '체크인' },
+  { id: 'coffee',    label: '커피' },
+  { id: 'food_note', label: '먹은 것' },
+  { id: 'youtube',   label: '유튜브' },
+  { id: 'quote',     label: '문장 수집' },
+  { id: 'music',     label: '음악' },
+  { id: 'makeup',    label: '메이크업' },
+  { id: 'skincare',  label: '기초 케어' },
 ]
 
 export default function SettingsPanel({
@@ -214,7 +312,8 @@ export default function SettingsPanel({
                 style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }}
               />
               <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                내보내기 파일명에 사용돼요. (예: {(diaryName || 'on_diary').replace(/\s+/g, '_')}_260524_2156.png)
+                내보내기 파일명에 사용돼요. 
+                <p></p>(미리보기: {(diaryName || 'on_diary').replace(/\s+/g, '_')}_260524_2156.png)
               </p>
             </section>
 
@@ -441,7 +540,7 @@ export default function SettingsPanel({
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs" style={{ color: 'var(--color-text)' }}>모자이크 강도</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold" style={{ color: '#9c59d1' }}>{mosaicIntensity}</span>
+                        <span className="text-xs font-bold" style={{ color: 'var(--color-text-muted)' }}>{mosaicIntensity}</span>
                         <button onClick={() => onMosaicIntensityChange(14)} className="text-xs hover:opacity-70"
                           style={{ color: 'var(--color-text-muted)' }}>초기화</button>
                       </div>
@@ -458,7 +557,7 @@ export default function SettingsPanel({
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs" style={{ color: 'var(--color-text)' }}>블러 강도</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold" style={{ color: '#9c59d1' }}>{blurIntensity}px</span>
+                        <span className="text-xs font-bold" style={{ color: 'var(--color-text-muted)' }}>{blurIntensity}px</span>
                         <button onClick={() => onBlurIntensityChange(12)} className="text-xs hover:opacity-70"
                           style={{ color: 'var(--color-text-muted)' }}>초기화</button>
                       </div>
@@ -486,7 +585,7 @@ export default function SettingsPanel({
                         color: selectedScrapTpl === t.id ? '#fff' : 'var(--color-primary-dark)',
                         border: 'none', cursor: 'pointer',
                       }}>
-                      {t.emoji} {t.label}
+                      {t.label}
                     </button>
                   ))}
                 </div>
@@ -500,25 +599,67 @@ export default function SettingsPanel({
                   </p>
                 ) : (
                   <div className="flex flex-col gap-3">
-                    {SCRAP_TPL_FIELDS[selectedScrapTpl].map(({ key, label }) => (
-                      <div key={key}>
-                        <p className="text-xs font-semibold mb-1" style={{ color: 'var(--color-text-muted)' }}>{label}</p>
-                        <input
-                          type="text"
-                          value={allDefaults[selectedScrapTpl]?.[key] ?? ''}
-                          onChange={e => {
-                            const next: Record<string, Record<string, string>> = {
-                              ...allDefaults,
-                              [selectedScrapTpl]: { ...allDefaults[selectedScrapTpl], [key]: e.target.value },
-                            }
-                            setAllDefaults(next)
-                            api.settings.set('scrap_defaults', JSON.stringify(next)).catch(() => {})
-                          }}
-                          className="w-full text-xs px-2 py-1.5 rounded-lg outline-none"
-                          style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }}
-                        />
-                      </div>
-                    ))}
+                    {SCRAP_TPL_FIELDS[selectedScrapTpl].map((field) => {
+                      const { key, label, type = 'text', options } = field
+                      const val = allDefaults[selectedScrapTpl]?.[key] ?? ''
+                      const setVal = (v: string) => {
+                        const next = { ...allDefaults, [selectedScrapTpl]: { ...allDefaults[selectedScrapTpl], [key]: v } }
+                        setAllDefaults(next)
+                        api.settings.set('scrap_defaults', JSON.stringify(next)).catch(() => {})
+                      }
+                      return (
+                        <div key={key}>
+                          <p className="text-xs font-semibold mb-1" style={{ color: 'var(--color-text-muted)' }}>{label}</p>
+                          {type === 'boolean' ? (
+                            <button
+                              onClick={() => setVal(val === 'true' ? 'false' : 'true')}
+                              className="text-xs px-3 py-1 rounded-full font-medium"
+                              style={{
+                                background: val === 'true' ? 'var(--color-primary)' : 'var(--color-primary-light)',
+                                color: val === 'true' ? '#fff' : 'var(--color-primary-dark)',
+                                border: '1px solid var(--color-primary)',
+                              }}>
+                              {val === 'true' ? 'ON' : 'OFF'}
+                            </button>
+                          ) : type === 'select' ? (
+                            <select
+                              value={val}
+                              onChange={e => setVal(e.target.value)}
+                              className="w-full text-xs px-2 py-1.5 rounded-lg outline-none"
+                              style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }}>
+                              <option value="">— 기본값 없음 —</option>
+                              {options?.map(o => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                          ) : type === 'color' ? (
+                            <div className="flex items-center gap-2">
+                              <input type="color" value={val || '#ffffff'}
+                                onChange={e => setVal(e.target.value)}
+                                className="w-8 h-7 rounded cursor-pointer border-0 p-0"
+                                style={{ border: '1px solid var(--color-border)' }} />
+                              <input type="text" value={val}
+                                onChange={e => setVal(e.target.value)}
+                                placeholder="#ffffff"
+                                className="flex-1 text-xs px-2 py-1.5 rounded-lg outline-none font-mono"
+                                style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }} />
+                            </div>
+                          ) : type === 'number' ? (
+                            <input
+                              type="number"
+                              value={val}
+                              onChange={e => setVal(e.target.value)}
+                              className="w-full text-xs px-2 py-1.5 rounded-lg outline-none"
+                              style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }} />
+                          ) : (
+                            <input
+                              type="text"
+                              value={val}
+                              onChange={e => setVal(e.target.value)}
+                              className="w-full text-xs px-2 py-1.5 rounded-lg outline-none"
+                              style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }} />
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
               </section>

@@ -1525,10 +1525,10 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
               {!showVideoUrlInput ? (<>
                 <button onClick={() => setShowVideoUrlInput(true)}
                   className="w-full text-left text-xs px-3 py-2 hover:bg-pink-50"
-                  style={{ color: 'var(--color-text)' }}>🔗 링크로 추가</button>
+                  style={{ color: 'var(--color-text)' }}>링크로 추가</button>
                 <button onClick={addVideoLocal}
                   className="w-full text-left text-xs px-3 py-2 hover:bg-pink-50"
-                  style={{ color: 'var(--color-text)', borderTop: '1px solid var(--color-border)' }}>📁 로컬 영상 추가</button>
+                  style={{ color: 'var(--color-text)', borderTop: '1px solid var(--color-border)' }}>로컬 영상 추가</button>
               </>) : (
                 <div className="p-2 flex flex-col gap-1.5">
                   <input autoFocus type="text" placeholder="YouTube / Vimeo URL"
@@ -2398,8 +2398,8 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                   if (dataUrl) setExportPreview(prev => prev ? { ...prev, dataUrl, privacy: nextPrivacy } : null)
                 }}
                 title={exportPreview.privacy ? '프라이버시 필터 켜짐 (클릭하여 끄기)' : '프라이버시 필터 꺼짐 (클릭하여 켜기)'}
-                style={{ flexShrink: 0, padding: '6px 12px', borderRadius: 8, border: `1px solid ${exportPreview.privacy ? '#9c59d1' : 'var(--color-border)'}`, background: exportPreview.privacy ? '#9c59d1' : 'transparent', color: exportPreview.privacy ? '#fff' : 'var(--color-text-muted)', fontSize: 12, cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
-                👻 {exportPreview.privacy ? '필터 켜짐' : '필터 꺼짐'}
+                style={{ flexShrink: 0, padding: '6px 12px', borderRadius: 8, border: `1px solid ${exportPreview.privacy ? 'var(--color-primary)' : 'var(--color-border)'}`, background: exportPreview.privacy ? 'var(--color-primary)' : 'transparent', color: exportPreview.privacy ? '#fff' : 'var(--color-text-muted)', fontSize: 12, cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
+                {exportPreview.privacy ? '필터 켜짐' : '필터 꺼짐'}
               </button>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
