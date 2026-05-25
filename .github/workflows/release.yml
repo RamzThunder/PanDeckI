@@ -15,72 +15,59 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin
 
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
+      - uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
 
       - name: Install dependencies
         run: npm install
 
-      - name: Build and release
-        uses: tauri-apps/tauri-action@v0
+      - name: Build Tauri app
+        run: npx tauri build --target aarch64-apple-darwin
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+
+      - name: Create release and upload
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'On Diary ${{ github.ref_name }}'
-          releaseBody: |
-            On Diary 새 버전이 출시되었습니다.
-
-            **macOS 최초 실행 시**: 앱을 우클릭 → 열기 를 선택하세요.
-            "손상된 파일" 오류가 뜨면 터미널에서 아래 명령어를 실행하세요:
-            ```
-            xattr -dr com.apple.quarantine "/Applications/On Diary.app"
-            ```
-            이후 버전은 자동으로 업데이트됩니다.
-          releaseDraft: false
-          prerelease: false
-          args: --target aarch64-apple-darwin
-
-      - name: Create updater latest.json
         run: |
           TAG="${{ github.ref_name }}"
-          echo "=== Searching for .sig files ==="
-          find src-tauri/target -name "*.sig" 2>/dev/null || echo "none found"
-          SIG_FILE=$(find src-tauri/target -name "*.app.tar.gz.sig" | head -1)
-          echo "SIG_FILE: $SIG_FILE"
-          TAR_NAME=$(basename "${SIG_FILE%.sig}")
-          python3 - "$TAG" "$SIG_FILE" "$TAR_NAME" <<'PYEOF'
-          import json, sys, datetime
-          tag, sig_file, tar_name = sys.argv[1], sys.argv[2], sys.argv[3]
-          version = json.load(open('src-tauri/tauri.conf.json'))['version']
-          sig = open(sig_file).read().strip()
-          data = {
-              'version': version,
-              'notes': 'dida 새 버전이 업데이트되었습니다.',
-              'pub_date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
-              'platforms': {
-                  'darwin-aarch64': {
-                      'signature': sig,
-                      'url': f'https://github.com/RamzThunder/on-diary/releases/download/{tag}/{tar_name}'
-                  }
-              }
-          }
-          json.dump(data, open('latest.json', 'w'), indent=2)
-          PYEOF
-          gh release upload "$TAG" latest.json --clobber
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUNDLE_DIR="src-tauri/target/aarch64-apple-darwin/release/bundle"
+
+          DMG=$(find "$BUNDLE_DIR/dmg" -name "*.dmg" | head -1)
+          TAR=$(find "$BUNDLE_DIR/macos" -name "*.app.tar.gz" | head -1)
+          TAR_NAME=$(basename "$TAR")
+          SIG=$(cat "${TAR}.sig")
+          VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          URL="https://github.com/RamzThunder/on-diary/releases/download/${TAG}/${TAR_NAME}"
+
+          echo "DMG: $DMG"
+          echo "TAR: $TAR"
+          echo "VERSION: $VERSION"
+
+          gh release create "$TAG" "$DMG" "$TAR" \
+            --title "dida $TAG" \
+            --notes "dida 새 버전이 출시되었습니다."
+
+          jq -n \
+            --arg version "$VERSION" \
+            --arg notes "dida 새 버전이 업데이트되었습니다." \
+            --arg pub_date "$DATE" \
+            --arg sig "$SIG" \
+            --arg url "$URL" \
+            '{"version":$version,"notes":$notes,"pub_date":$pub_date,"platforms":{"darwin-aarch64":{"signature":$sig,"url":$url}}}' \
+            > latest.json
+
+          cat latest.json
+          gh release upload "$TAG" latest.json
