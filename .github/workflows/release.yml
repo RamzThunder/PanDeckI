@@ -72,18 +72,18 @@ jobs:
           echo "SIG: ${TAR}.sig"
           echo "VERSION: $VERSION"
 
-          gh release create "$TAG" "$DMG" "$TAR" "${TAR}.sig" \
-            --title "dida $TAG" \
-            --notes "dida 새 버전이 출시되었습니다."
-
           jq -n \
             --arg version "$VERSION" \
             --arg notes "dida 새 버전이 업데이트되었습니다." \
             --arg pub_date "$DATE" \
             --arg sig "$SIG" \
-            --arg url "$URL" \
+            --arg url "https://github.com/RamzThunder/dida-releases/releases/download/${TAG}/${TAR_NAME}" \
             '{"version":$version,"notes":$notes,"pub_date":$pub_date,"platforms":{"darwin-aarch64":{"signature":$sig,"url":$url}}}' \
             > latest.json
 
           cat latest.json
-          gh release upload "$TAG" latest.json
+
+          GH_TOKEN="${{ secrets.RELEASES_PAT }}" gh release create "$TAG" "$DMG" "$TAR" "${TAR}.sig" latest.json \
+            --repo RamzThunder/dida-releases \
+            --title "dida $TAG" \
+            --notes "dida 새 버전이 출시되었습니다."
