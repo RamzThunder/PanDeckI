@@ -54,3 +54,30 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: --target aarch64-apple-darwin
+
+      - name: Create updater latest.json
+        run: |
+          TAG="${{ github.ref_name }}"
+          SIG_FILE=$(find src-tauri/target/aarch64-apple-darwin/release/bundle/macos -name "*.app.tar.gz.sig" | head -1)
+          TAR_NAME=$(basename "${SIG_FILE%.sig}")
+          python3 - "$TAG" "$SIG_FILE" "$TAR_NAME" <<'PYEOF'
+          import json, sys, datetime
+          tag, sig_file, tar_name = sys.argv[1], sys.argv[2], sys.argv[3]
+          version = json.load(open('src-tauri/tauri.conf.json'))['version']
+          sig = open(sig_file).read().strip()
+          data = {
+              'version': version,
+              'notes': 'dida 새 버전이 업데이트되었습니다.',
+              'pub_date': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+              'platforms': {
+                  'darwin-aarch64': {
+                      'signature': sig,
+                      'url': f'https://github.com/RamzThunder/on-diary/releases/download/{tag}/{tar_name}'
+                  }
+              }
+          }
+          json.dump(data, open('latest.json', 'w'), indent=2)
+          PYEOF
+          gh release upload "$TAG" latest.json --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
