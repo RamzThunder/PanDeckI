@@ -40,6 +40,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
+
           TAG="${{ github.ref_name }}"
           BUNDLE_DIR="src-tauri/target/aarch64-apple-darwin/release/bundle"
 
@@ -49,16 +51,14 @@ jobs:
           DMG=$(find "$BUNDLE_DIR/dmg" -name "*.dmg" | head -1)
           TAR=$(find "$BUNDLE_DIR/macos" -name "*.app.tar.gz" | head -1)
 
-          echo "DMG: $DMG"
-          echo "TAR: $TAR"
-
+          if [ -z "$DMG" ]; then
+            echo "ERROR: DMG not found"; exit 1
+          fi
           if [ -z "$TAR" ]; then
-            echo "ERROR: .app.tar.gz not found. createUpdaterArtifacts may not be set."
-            exit 1
+            echo "ERROR: .app.tar.gz not found — check createUpdaterArtifacts: true in tauri.conf.json"; exit 1
           fi
           if [ ! -f "${TAR}.sig" ]; then
-            echo "ERROR: .sig not found at ${TAR}.sig"
-            exit 1
+            echo "ERROR: .sig not found at ${TAR}.sig"; exit 1
           fi
 
           TAR_NAME=$(basename "$TAR")
@@ -66,9 +66,13 @@ jobs:
           VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           URL="https://github.com/RamzThunder/on-diary/releases/download/${TAG}/${TAR_NAME}"
+
+          echo "DMG: $DMG"
+          echo "TAR: $TAR"
+          echo "SIG: ${TAR}.sig"
           echo "VERSION: $VERSION"
 
-          gh release create "$TAG" "$DMG" "$TAR" \
+          gh release create "$TAG" "$DMG" "$TAR" "${TAR}.sig" \
             --title "dida $TAG" \
             --notes "dida 새 버전이 출시되었습니다."
 
