@@ -31,6 +31,7 @@ export interface CanvasEl {
   letterSpacing?: number
   lineHeight?: number
   scaleX?: number
+  textPadding?: number
   fontFamily: string
   bgColor: string; bgOpacity: number
   align: 'left' | 'center' | 'right'
@@ -758,7 +759,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
       content: '텍스트를 입력하세요',
       fontSize: src.fontSize, color: src.color, bold: src.bold, italic: src.italic,
       underline: src.underline, strikethrough: src.strikethrough,
-      letterSpacing: src.letterSpacing, lineHeight: src.lineHeight, scaleX: src.scaleX,
+      letterSpacing: src.letterSpacing, lineHeight: src.lineHeight, scaleX: src.scaleX, textPadding: src.textPadding,
       fontFamily: src.fontFamily, bgColor: src.bgColor, bgOpacity: src.bgOpacity,
       align: src.align, alignV: src.alignV, textRadius: src.textRadius,
       borderWidth: src.borderWidth, borderColor: src.borderColor,
@@ -830,7 +831,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
           else { ctx.beginPath(); ctx.rect(0, 0, el.w, el.h) }
           ctx.stroke()
         }
-        const pad = 6, fs = el.fontSize
+        const pad = el.textPadding ?? 6, fs = el.fontSize
         const lh = fs * (el.lineHeight ?? 1.4)
         const sx = (el.scaleX ?? 100) / 100
         ctx.font = `${el.italic ? 'italic ' : ''}${el.bold ? 'bold ' : ''}${fs}px ${el.fontFamily}`
@@ -1820,7 +1821,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                         fontFamily: el.fontFamily,
                         background: el.bgOpacity > 0 ? hexToRgba(el.bgColor, el.bgOpacity) : 'rgba(255,255,255,0.75)',
                         border: bw > 0 ? `${bw}px solid ${el.borderColor ?? '#333333'}` : 'none',
-                        padding: 6, borderRadius: textRad,
+                        padding: el.textPadding ?? 6, borderRadius: textRad,
                         textAlign: el.align, cursor: 'text', userSelect: 'text',
                         boxSizing: 'border-box',
                       }} />
@@ -1829,7 +1830,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                       width: '100%', height: '100%', overflow: 'hidden',
                       display: 'flex', flexDirection: 'column', justifyContent: justifyV,
                       background: hexToRgba(el.bgColor, el.bgOpacity),
-                      padding: 6, borderRadius: textRad,
+                      padding: el.textPadding ?? 6, borderRadius: textRad,
                       border: bw > 0 ? `${bw}px solid ${el.borderColor ?? '#333333'}` : 'none',
                       boxSizing: 'border-box',
                     }}>
@@ -2257,6 +2258,14 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                     onChange={e => updateEl(selectedEl.id, { lineHeight: Number(e.target.value) })}
                     style={{ width: 60, height: 4, cursor: 'pointer', flexShrink: 0 }} />
                   <span style={{ fontSize: 10, color: 'var(--color-primary-dark)', minWidth: 24, flexShrink: 0 }}>{(selectedEl.lineHeight ?? 1.4).toFixed(2)}</span>
+
+                  {vSep}
+
+                  <span style={{ fontSize: 10, color: 'var(--color-text-muted)', flexShrink: 0 }}>여백</span>
+                  <input type="range" min={0} max={40} step={1} value={selectedEl.textPadding ?? 6}
+                    onChange={e => updateEl(selectedEl.id, { textPadding: Number(e.target.value) })}
+                    style={{ width: 60, height: 4, cursor: 'pointer', flexShrink: 0 }} />
+                  <span style={{ fontSize: 10, color: 'var(--color-primary-dark)', minWidth: 18, flexShrink: 0 }}>{selectedEl.textPadding ?? 6}</span>
 
                   {vSep}
 
