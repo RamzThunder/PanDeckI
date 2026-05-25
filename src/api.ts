@@ -121,5 +121,10 @@ export const api = {
     async resetPath(): Promise<void> {
       await invoke('reset_db_path')
     }
+  },
+  video: {
+    async getYoutubePort(): Promise<number> {
+      return invoke<number>('get_youtube_proxy_port')
+    }
   }
 }

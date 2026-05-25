@@ -221,6 +221,19 @@ function getVideoEmbedUrl(url: string): string | null {
   return null
 }
 
+// YouTube는 asset:// 오리진을 거부하므로 로컬 HTTP 프록시를 통해 embed
+// (Vimeo는 정상 작동하므로 직접 embed 유지)
+function getVideoRenderUrl(url: string, youtubePort: number): string | null {
+  const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|live\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/)
+  if (yt) {
+    if (youtubePort > 0) return `http://localhost:${youtubePort}/?v=${yt[1]}`
+    return `https://www.youtube.com/embed/${yt[1]}?rel=0&playsinline=1`
+  }
+  const vimeo = url.match(/vimeo\.com\/(\d+)/)
+  if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}?playsinline=1`
+  return null
+}
+
 function isVideoUrl(url: string): boolean {
   return getVideoEmbedUrl(url) !== null
 }
@@ -585,10 +598,15 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
   const persistRef    = useRef<(d: DailyData) => Promise<void>>(() => Promise.resolve())
   const exportRef     = useRef<() => Promise<void>>(() => Promise.resolve())
   const [exportPreview, setExportPreview] = useState<{ dataUrl: string; filename: string; privacy: boolean } | null>(null)
+  const [youtubePort, setYoutubePort] = useState(0)
   const historyRef    = useRef<DailyData[]>([])
   const historyIdxRef = useRef(-1)
 
   const dateLabel = currentDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
+
+  useEffect(() => {
+    api.video.getYoutubePort().then(setYoutubePort).catch(() => {})
+  }, [])
 
   useEffect(() => {
     historyRef.current = []
@@ -1834,7 +1852,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                   <div style={{ width: '100%', height: '100%', borderRadius: 6, overflow: 'hidden', position: 'relative', background: '#000' }}>
                     {el.videoType === 'embed' ? (
                       <iframe
-                        src={getVideoEmbedUrl(el.content) ?? ''}
+                        src={getVideoRenderUrl(el.content, youtubePort) ?? ''}
                         style={{ width: '100%', height: '100%', border: 'none', pointerEvents: cmdHeld ? 'auto' : 'none' }}
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                         allowFullScreen

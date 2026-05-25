@@ -1,4 +1,5 @@
 use crate::db::{DbPathState, DbState};
+use crate::YoutubeProxyPort;
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -724,6 +725,13 @@ pub async fn fetch_image_b64(url: String) -> Result<String, String> {
     let bytes = res.bytes().await.map_err(|e| e.to_string())?;
     let b64 = general_purpose::STANDARD.encode(&bytes);
     Ok(format!("data:{};base64,{}", content_type, b64))
+}
+
+// ── YouTube proxy port ───────────────────────────────────────────────────────
+
+#[command]
+pub fn get_youtube_proxy_port(state: State<YoutubeProxyPort>) -> u16 {
+    state.0
 }
 
 // ── Open URL in default browser ───────────────────────────────────────────────
