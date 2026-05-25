@@ -43,16 +43,29 @@ jobs:
           TAG="${{ github.ref_name }}"
           BUNDLE_DIR="src-tauri/target/aarch64-apple-darwin/release/bundle"
 
+          echo "=== Bundle directory contents ==="
+          find "$BUNDLE_DIR" -type f 2>/dev/null || echo "BUNDLE_DIR not found"
+
           DMG=$(find "$BUNDLE_DIR/dmg" -name "*.dmg" | head -1)
           TAR=$(find "$BUNDLE_DIR/macos" -name "*.app.tar.gz" | head -1)
+
+          echo "DMG: $DMG"
+          echo "TAR: $TAR"
+
+          if [ -z "$TAR" ]; then
+            echo "ERROR: .app.tar.gz not found. createUpdaterArtifacts may not be set."
+            exit 1
+          fi
+          if [ ! -f "${TAR}.sig" ]; then
+            echo "ERROR: .sig not found at ${TAR}.sig"
+            exit 1
+          fi
+
           TAR_NAME=$(basename "$TAR")
           SIG=$(cat "${TAR}.sig")
           VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           URL="https://github.com/RamzThunder/on-diary/releases/download/${TAG}/${TAR_NAME}"
-
-          echo "DMG: $DMG"
-          echo "TAR: $TAR"
           echo "VERSION: $VERSION"
 
           gh release create "$TAG" "$DMG" "$TAR" \
