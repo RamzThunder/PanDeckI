@@ -19,6 +19,8 @@ interface Props {
   onMosaicIntensityChange: (v: number) => void
   blurIntensity: number
   onBlurIntensityChange: (v: number) => void
+  diaryName: string
+  onDiaryNameChange: (name: string) => void
   onClose: () => void
 }
 
@@ -84,6 +86,7 @@ export default function SettingsPanel({
   fontOffsetY, onFontOffsetYChange,
   mosaicIntensity, onMosaicIntensityChange,
   blurIntensity, onBlurIntensityChange,
+  diaryName, onDiaryNameChange,
   onClose,
 }: Props): JSX.Element {
   const [tab, setTab] = useState<Tab>('theme')
@@ -293,6 +296,21 @@ export default function SettingsPanel({
         {/* Tab: 화면 */}
         {tab === 'display' && (
           <div className="flex-1 p-4 flex flex-col gap-5">
+            <section>
+              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>다이어리 이름</p>
+              <input
+                type="text"
+                value={diaryName}
+                onChange={e => onDiaryNameChange(e.target.value)}
+                placeholder="on_diary"
+                className="w-full text-xs px-3 py-2 rounded-lg outline-none"
+                style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }}
+              />
+              <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                내보내기 파일명에 사용돼요. (예: {(diaryName || 'on_diary').replace(/\s+/g, '_')}_260524_2156.png)
+              </p>
+            </section>
+
             <section>
               <p className="text-xs font-semibold mb-3" style={{ color: 'var(--color-text-muted)' }}>화면 배율</p>
               <div className="flex items-center gap-3">

@@ -82,8 +82,15 @@ export const api = {
     }
   },
   export: {
-    async savePng(b64: string): Promise<void> {
-      await invoke('save_png', { b64 })
+    async savePng(b64: string, filename: string): Promise<void> {
+      await invoke('save_png', { b64, filename })
+    },
+    async captureToB64(): Promise<string> {
+      // screencapture -l <windowID> -o 로 알파 채널 포함 캡처 → body 배경 불필요
+      await new Promise<void>(resolve =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      )
+      return invoke<string>('capture_screenshot_b64')
     },
     async captureScreenshot(): Promise<void> {
       const path = await dialogSave({ title: 'PNG로 내보내기', filters: [{ name: 'PNG 이미지', extensions: ['png'] }] })

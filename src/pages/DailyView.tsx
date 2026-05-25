@@ -5,7 +5,6 @@ import { toLocalDate } from '../store/diary'
 import StickerPicker from '../components/StickerPicker'
 import CropModal, { CustomShape } from '../components/CropModal'
 import TemplateModal from '../components/TemplateModal'
-import MarkdownTestBox from '../components/MarkdownTestBox'
 import ReactMarkdown from 'react-markdown'
 interface Props {
   currentDate: Date
@@ -16,7 +15,7 @@ interface Props {
   globalFont: string
   mosaicIntensity: number
   blurIntensity: number
-  exportPrivacy: boolean
+  diaryName: string
 }
 
 export interface CanvasEl {
@@ -538,7 +537,7 @@ function InteractiveOverlay({ url, cmdHeld }: { url: string; cmdHeld: boolean })
   )
 }
 
-export default function DailyView({ currentDate, onPrev, onNext, onToday, systemFonts, globalFont, mosaicIntensity, blurIntensity, exportPrivacy }: Props): JSX.Element {
+export default function DailyView({ currentDate, onPrev, onNext, onToday, systemFonts, globalFont, mosaicIntensity, blurIntensity, diaryName }: Props): JSX.Element {
   const dateStr = toLocalDate(currentDate)
   const [data, setData] = useState<DailyData>(DEFAULT_DATA)
   const [saved, setSaved] = useState(false)
@@ -549,10 +548,8 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
   const [showStickers, setShowStickers] = useState(false)
   const [showVideoMenu, setShowVideoMenu] = useState(false)
   const [showGhostMenu, setShowGhostMenu] = useState(false)
-  const [showMarkdownTest, setShowMarkdownTest] = useState(false)
   const [showVideoUrlInput, setShowVideoUrlInput] = useState(false)
   const [videoUrlInput, setVideoUrlInput] = useState('')
-  const [showTextMenu, setShowTextMenu] = useState(false)
   const mdTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const [cmdHeld, setCmdHeld] = useState(false)
   const [cropTarget, setCropTarget] = useState<string | null>(null)
@@ -587,6 +584,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
   const elClipboardRef   = useRef<CanvasEl[]>([])
   const persistRef    = useRef<(d: DailyData) => Promise<void>>(() => Promise.resolve())
   const exportRef     = useRef<() => Promise<void>>(() => Promise.resolve())
+  const [exportPreview, setExportPreview] = useState<{ dataUrl: string; filename: string; privacy: boolean } | null>(null)
   const historyRef    = useRef<DailyData[]>([])
   const historyIdxRef = useRef(-1)
 
@@ -746,9 +744,9 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
     setSelectedId(newEl.id)
   }
 
-  const exportToPNG = useCallback(async () => {
+  const buildExportDataUrl = useCallback(async (privacy: boolean): Promise<string> => {
     const canvasEl = canvasRef.current
-    if (!canvasEl) return
+    if (!canvasEl) return ''
     const W = canvasEl.clientWidth
     const H = canvasEl.clientHeight
     const dpr = 2
@@ -783,9 +781,9 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
         ctx.restore()
       } catch {}
     }
-    for (const el of [...d.elements].filter(el => !exportPrivacy || getGhostMode(el) !== 'exclude').sort((a, b) => a.z - b.z)) {
+    for (const el of [...d.elements].filter(el => !privacy || getGhostMode(el) !== 'exclude').sort((a, b) => a.z - b.z)) {
       if (el.type === 'video') continue
-      const gm = exportPrivacy ? getGhostMode(el) : undefined
+      const gm = privacy ? getGhostMode(el) : undefined
       ctx.save()
       ctx.globalAlpha = el.opacity / 100
       ctx.translate(el.x + el.w / 2, el.y + el.h / 2)
@@ -869,9 +867,22 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
       if (gm === 'mosaic') applyMosaicExport(ctx, offscreen, el.x, el.y, el.w, el.h, dpr, mosaicIntensity)
       if (gm === 'blur')   applyBlurExport(ctx, offscreen, el.x, el.y, el.w, el.h, dpr, blurIntensity)
     }
-    const b64 = offscreen.toDataURL('image/png').split(',')[1]
-    await api.export.savePng(b64)
-  }, [customShapes, exportPrivacy])
+    return offscreen.toDataURL('image/png')
+  }, [customShapes, mosaicIntensity, blurIntensity])
+
+  const exportToPNG = useCallback(async () => {
+    const dataUrl = await buildExportDataUrl(true)
+    if (!dataUrl) return
+    const now = new Date()
+    const yy  = String(now.getFullYear()).slice(2)
+    const mm  = String(now.getMonth() + 1).padStart(2, '0')
+    const dd  = String(now.getDate()).padStart(2, '0')
+    const hh  = String(now.getHours()).padStart(2, '0')
+    const min = String(now.getMinutes()).padStart(2, '0')
+    const safeName = (diaryName || 'on_diary').replace(/\s+/g, '_')
+    const filename = `${safeName}_${yy}${mm}${dd}_${hh}${min}.png`
+    setExportPreview({ dataUrl, filename, privacy: true })
+  }, [buildExportDataUrl, diaryName])
   exportRef.current = exportToPNG
 
   useEffect(() => {
@@ -1137,8 +1148,12 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
           const elData = dataRef.current.elements.find(x => x.id === id)
           if (!elData) continue
           const sg = (v: number) => snapRef.current ? Math.round(v / 10) * 10 : v
-          const newX = sg(Math.max(0, Math.min(canvas.clientWidth - elData.w, orig.x + op.dx)))
-          const newY = sg(Math.max(0, Math.min(canvas.clientHeight - elData.h, orig.y + op.dy)))
+          const rot = ((elData.rotation ?? 0) * Math.PI) / 180
+          const W = elData.w, H = elData.h
+          const bbW = Math.abs(W * Math.cos(rot)) + Math.abs(H * Math.sin(rot))
+          const bbH = Math.abs(W * Math.sin(rot)) + Math.abs(H * Math.cos(rot))
+          const newX = sg(Math.max(bbW / 2 - W / 2, Math.min(canvas.clientWidth  - W / 2 - bbW / 2, orig.x + op.dx)))
+          const newY = sg(Math.max(bbH / 2 - H / 2, Math.min(canvas.clientHeight - H / 2 - bbH / 2, orig.y + op.dy)))
           elNode.style.left = `${newX}px`; elNode.style.top = `${newY}px`
         }
         return
@@ -1168,8 +1183,12 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
         if (!node || !canvas) return
         const dx = e.clientX - op.sx, dy = e.clientY - op.sy
         const sg = (v: number) => snapRef.current ? Math.round(v / 10) * 10 : v
-        const newX = sg(Math.max(0, Math.min(canvas.clientWidth  - node.offsetWidth,  op.ox + dx)))
-        const newY = sg(Math.max(0, Math.min(canvas.clientHeight - node.offsetHeight, op.oy + dy)))
+        const elRot = ((dataRef.current.elements.find(el => el.id === op.id)?.rotation ?? 0) * Math.PI) / 180
+        const W = node.offsetWidth, H = node.offsetHeight
+        const bbW = Math.abs(W * Math.cos(elRot)) + Math.abs(H * Math.sin(elRot))
+        const bbH = Math.abs(W * Math.sin(elRot)) + Math.abs(H * Math.cos(elRot))
+        const newX = sg(Math.max(bbW / 2 - W / 2, Math.min(canvas.clientWidth  - W / 2 - bbW / 2, op.ox + dx)))
+        const newY = sg(Math.max(bbH / 2 - H / 2, Math.min(canvas.clientHeight - H / 2 - bbH / 2, op.oy + dy)))
         node.style.left = `${newX}px`; node.style.top = `${newY}px`
         op.cx = newX; op.cy = newY
       } else if (op.kind === 'resize') {
@@ -1191,7 +1210,9 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
         if (node) { node.style.width = `${op.cw}px`; node.style.height = `${op.ch}px` }
       } else if (op.kind === 'rotate') {
         const angle = Math.atan2(e.clientY - op.ecy, e.clientX - op.ecx) * (180 / Math.PI)
-        op.cr = (op.or + (angle - op.sa) + 360) % 360
+        let cr = (op.or + (angle - op.sa) + 360) % 360
+        if (e.shiftKey) cr = Math.round(cr / 15) * 15
+        op.cr = cr
         if (node) node.style.transform = `rotate(${op.cr}deg)`
       }
     }
@@ -1344,33 +1365,6 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
     const next = { ...data, elements: [...data.elements, el] }
     setData(next); persist(next); setSelectedId(el.id)
     setTimeout(() => setEditingId(el.id), 30)
-    setShowTextMenu(false)
-  }
-
-  const addMarkdown = () => {
-    const el = makeEl('markdown', 80, 80, '## 마크다운\n**볼드**, *이탤릭*, `코드`', maxZ)
-    const next = { ...data, elements: [...data.elements, el] }
-    setData(next); persist(next); setSelectedId(el.id)
-    setTimeout(() => setEditingId(el.id), 30)
-    setShowTextMenu(false)
-  }
-
-  const applyMarkdownFormat = (mark: string) => {
-    const el = data.elements.find(e => e.id === selectedId)
-    if (!el || el.type !== 'markdown') return
-    const ta = mdTextareaRef.current
-    if (ta && editingId === selectedId) {
-      const { selectionStart: s, selectionEnd: en } = ta
-      if (s !== en) {
-        const wrapped = ta.value.slice(0, s) + `${mark}${ta.value.slice(s, en)}${mark}` + ta.value.slice(en)
-        setData(prev => ({ ...prev, elements: prev.elements.map(x => x.id === selectedId ? { ...x, content: wrapped } : x) }))
-        requestAnimationFrame(() => { ta.focus(); ta.setSelectionRange(s + mark.length, en + mark.length) })
-        return
-      }
-    }
-    const newContent = `${mark}${el.content}${mark}`
-    const next = { ...data, elements: data.elements.map(x => x.id === selectedId ? { ...x, content: newContent } : x) }
-    setData(next); persist(next)
   }
 
   const addPhoto = async () => {
@@ -1506,32 +1500,9 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
         </button>
         <div className="w-px self-stretch mx-0.5" style={{ background: 'var(--color-border)' }} />
 
-        {/* Markdown B / I — markdown 박스 선택 시만 노출 */}
-        {selectedEl?.type === 'markdown' && (<>
-          <button onMouseDown={e => e.preventDefault()} onClick={() => applyMarkdownFormat('**')}
-            className="text-xs font-bold hover:opacity-80"
-            style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--color-primary)', background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', flexShrink: 0 }}>B</button>
-          <button onMouseDown={e => e.preventDefault()} onClick={() => applyMarkdownFormat('*')}
-            className="text-xs italic hover:opacity-80"
-            style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--color-primary)', background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', flexShrink: 0 }}>I</button>
-          <div className="w-px self-stretch mx-0.5" style={{ background: 'var(--color-border)' }} />
-        </>)}
-
         {/* Add buttons */}
-        <div className="relative">
-          <button onClick={() => setShowTextMenu(v => !v)} className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
-            style={{ background: showTextMenu ? 'var(--color-primary)' : 'var(--color-primary-light)', color: showTextMenu ? '#fff' : 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>
-            텍스트
-          </button>
-          {showTextMenu && (
-            <div className="absolute top-full left-0 mt-1 z-50 rounded-xl shadow-xl overflow-hidden"
-              style={{ background: '#fff', border: '1px solid var(--color-border)', minWidth: 140 }}
-              onClick={e => e.stopPropagation()}>
-              <button onClick={addText} className="w-full text-left text-xs px-3 py-2 hover:bg-pink-50" style={{ color: 'var(--color-text)' }}>일반 텍스트</button>
-              <button onClick={addMarkdown} className="w-full text-left text-xs px-3 py-2 hover:bg-pink-50" style={{ color: 'var(--color-text)', borderTop: '1px solid var(--color-border)' }}>마크다운 (실험)</button>
-            </div>
-          )}
-        </div>
+        <button onClick={addText} className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
+          style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>텍스트</button>
         <div className="relative">
           <button onClick={() => setShowStickers(v => !v)} className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
             style={{ background: showStickers ? 'var(--color-primary)' : 'var(--color-primary-light)', color: showStickers ? '#fff' : 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>
@@ -1587,8 +1558,6 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
         </div>
         <button onClick={() => setShowTemplate(true)} className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
           style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>스크랩</button>
-        <button onClick={() => setShowMarkdownTest(v => !v)} className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
-          style={{ background: showMarkdownTest ? 'var(--color-primary)' : 'var(--color-primary-light)', color: showMarkdownTest ? '#fff' : 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>MD</button>
         <div className="w-px self-stretch mx-0.5" style={{ background: 'var(--color-border)' }} />
 
         {/* Canvas background */}
@@ -2377,10 +2346,6 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
         )
       })()}
 
-      {showMarkdownTest && (
-        <MarkdownTestBox onClose={() => setShowMarkdownTest(false)} />
-      )}
-
       {/* Crop modal */}
       {cropTarget && (() => {
         const el = data.elements.find(e => e.id === cropTarget)
@@ -2407,6 +2372,53 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
           />
         )
       })()}
+
+      {exportPreview && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 999999, background: 'rgba(0,0,0,0.7)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}
+          onClick={() => setExportPreview(null)}>
+          <div style={{ background: 'var(--color-bg)', borderRadius: 16, padding: 20, display: 'flex', flexDirection: 'column', gap: 14, maxWidth: '90%', maxHeight: '90%', boxShadow: '0 8px 40px rgba(0,0,0,0.4)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>내보내기 미리보기</p>
+              <button onClick={() => setExportPreview(null)} style={{ fontSize: 18, color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>×</button>
+            </div>
+            <div style={{ overflow: 'auto', borderRadius: 8, border: '1px solid var(--color-border)', background: '#888' }}>
+              <img src={exportPreview.dataUrl} alt="미리보기" draggable={false}
+                style={{ display: 'block', maxWidth: '70vw', maxHeight: '60vh', objectFit: 'contain' }} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 8, flex: 1, background: 'var(--color-primary-light)', border: '1px solid var(--color-border)', overflow: 'hidden' }}>
+                <span style={{ fontSize: 11, color: 'var(--color-text-muted)', flexShrink: 0 }}>파일명</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exportPreview.filename}</span>
+              </div>
+              <button
+                onClick={async () => {
+                  const nextPrivacy = !exportPreview.privacy
+                  const dataUrl = await buildExportDataUrl(nextPrivacy)
+                  if (dataUrl) setExportPreview(prev => prev ? { ...prev, dataUrl, privacy: nextPrivacy } : null)
+                }}
+                title={exportPreview.privacy ? '프라이버시 필터 켜짐 (클릭하여 끄기)' : '프라이버시 필터 꺼짐 (클릭하여 켜기)'}
+                style={{ flexShrink: 0, padding: '6px 12px', borderRadius: 8, border: `1px solid ${exportPreview.privacy ? '#9c59d1' : 'var(--color-border)'}`, background: exportPreview.privacy ? '#9c59d1' : 'transparent', color: exportPreview.privacy ? '#fff' : 'var(--color-text-muted)', fontSize: 12, cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
+                👻 {exportPreview.privacy ? '필터 켜짐' : '필터 꺼짐'}
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setExportPreview(null)}
+                style={{ flex: 1, padding: '8px 0', borderRadius: 10, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-muted)', fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>
+                취소
+              </button>
+              <button onClick={async () => {
+                const b64 = exportPreview.dataUrl.split(',')[1]
+                setExportPreview(null)
+                await api.export.savePng(b64, exportPreview.filename)
+              }}
+                style={{ flex: 2, padding: '8px 0', borderRadius: 10, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 700 }}>
+                저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -66,6 +66,7 @@ pub fn run() {
             commands::fetch_image_b64,
             commands::save_png,
             commands::capture_screenshot_to,
+            commands::capture_screenshot_b64,
             commands::backup_export_to,
             commands::backup_import_from,
             commands::get_db_path,

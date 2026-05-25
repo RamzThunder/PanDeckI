@@ -430,11 +430,12 @@ pub fn window_toggle_maximize(app: AppHandle) {
 // ── PNG 내보내기 ──────────────────────────────────────────────────────────────
 
 #[command]
-pub async fn save_png(app: AppHandle, b64: String) -> Result<(), String> {
+pub async fn save_png(app: AppHandle, b64: String, filename: String) -> Result<(), String> {
     let path = app
         .dialog()
         .file()
         .set_title("PNG로 내보내기")
+        .set_file_name(&filename)
         .add_filter("PNG 이미지", &["png"])
         .blocking_save_file();
     if let Some(fpath) = path {
@@ -626,6 +627,54 @@ pub fn capture_screenshot_to(app: AppHandle, path: String) -> Result<(), String>
         .status()
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+// 스크린샷을 임시 파일에 저장 후 base64로 반환 (미리보기용)
+// screencapture -l <windowID> 로 창만 알파 채널 포함 캡처 → 모서리 투명
+#[command]
+pub fn capture_screenshot_b64(app: AppHandle) -> Result<String, String> {
+    let win = app.get_webview_window("main").ok_or("window not found")?;
+    let tmp = std::env::temp_dir().join("on_diary_preview_tmp.png");
+
+    // Python Quartz로 on-diary 창의 CGWindowID 조회
+    let py = r#"
+import Quartz, sys
+wl = Quartz.CGWindowListCopyWindowInfo(Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID)
+for w in wl:
+    if w.get('kCGWindowOwnerName','') == 'on-diary':
+        print(w['kCGWindowNumber']); sys.exit(0)
+"#;
+    let id_out = std::process::Command::new("python3").arg("-c").arg(py).output().ok();
+    let window_id = id_out
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    if let Some(wid) = window_id {
+        // -l: 특정 창 캡처, -x: 무음 → 그림자 포함 알파 채널 PNG
+        std::process::Command::new("screencapture")
+            .args(["-l", &wid, "-x", tmp.to_str().unwrap()])
+            .status()
+            .map_err(|e| e.to_string())?;
+    } else {
+        // Fallback: 지역 캡처 (JS 에서 body bg 설정 후 호출됨)
+        let scale = win.scale_factor().map_err(|e| e.to_string())?;
+        let phys_pos = win.outer_position().map_err(|e| e.to_string())?;
+        let phys_size = win.outer_size().map_err(|e| e.to_string())?;
+        let lx = (phys_pos.x as f64 / scale) as i32;
+        let ly = (phys_pos.y as f64 / scale) as i32;
+        let lw = (phys_size.width as f64 / scale) as u32;
+        let lh = (phys_size.height as f64 / scale) as u32;
+        let region = format!("{},{},{},{}", lx, ly, lw, lh);
+        std::process::Command::new("screencapture")
+            .args(["-R", &region, "-x", tmp.to_str().unwrap()])
+            .status()
+            .map_err(|e| e.to_string())?;
+    }
+
+    let bytes = fs::read(&tmp).map_err(|e| e.to_string())?;
+    fs::remove_file(&tmp).ok();
+    Ok(general_purpose::STANDARD.encode(&bytes))
 }
 
 // ── HTTP fetch (트위터 등 외부 API – WebView CORS 우회) ──────────────────────

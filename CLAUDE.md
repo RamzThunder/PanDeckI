@@ -113,8 +113,9 @@ export interface DailyData {
 - 줌: Cmd+스크롤 또는 설정 패널 슬라이더 (50~150%), settings DB에 영속
 
 ## 구현된 기능
-- **자유 캔버스**: 텍스트/스티커/사진/카드/비디오/마크다운 자유 배치, 드래그/리사이즈/회전
+- **자유 캔버스**: 텍스트/스티커/사진/카드/비디오 자유 배치, 드래그/리사이즈/회전
 - **드래그**: `window.addEventListener('pointermove/pointerup')` 방식 (React synthetic event 문제 우회)
+- **드래그 경계**: 회전된 요소의 실제 bounding box(bbW/bbH) 기준으로 캔버스 이탈 방지 — 세로 이미지 90° 회전 시에도 상단 여백 없이 배치 가능
 - **마키 선택**: 빈 캔버스 드래그 → 영역 내 요소 다중 선택
 - **다중 선택/조작**: Shift+클릭, 다중 드래그/리사이즈, Cmd+G 그룹핑, 레이어 정렬(맨앞/앞/뒤/맨뒤)
 - **실행 취소/다시 실행**: 최대 50단계 히스토리, Cmd+Z / Cmd+Shift+Z, 툴바 ↩↪ 버튼
@@ -134,29 +135,29 @@ export interface DailyData {
 - **불투명도**: 요소 전체 투명도 슬라이더
 - **뒤집기**: 좌우/상하 반전
 - **유령 모드**: exclude(숨김)/mosaic(모자이크)/blur(블러) — PNG 내보내기 시 적용
-- **프라이버시 보호 토글**: 사이드바 알약 버튼 (`exportPrivacy` 상태, App.tsx). ON=유령모드 적용, OFF=모든 요소 원본 내보내기
+- **프라이버시 보호 토글**: 내보내기 미리보기 모달 내 👻 버튼. ON=유령모드 적용, OFF=모든 요소 원본 내보내기 (사이드바 버튼 제거됨)
 - **유령 모드 blur 내보내기**: WKWebView에서 `ctx.filter` 미작동 → 3-pass box blur (JS 픽셀 처리) + 코사인 소프트 마스크 페더링으로 구현 (`applyBlurExport`, `boxBlurH`, `boxBlurV` in DailyView.tsx)
 - **비디오**: YouTube/Vimeo embed(`videoType: 'embed'`) + 로컬 파일(`videoType: 'local'`). YouTube URL 인식: watch?v=, shorts/, live/, youtu.be/
 - **카드/스크랩**: TemplateModal로 편집하는 구조화된 카드 요소
-- **마크다운**: 마크다운 렌더링 요소 (MarkdownTestBox)
+- **회전 스냅**: Shift 누른 채 핸들 회전 시 15° 단위로 스냅
 - **클립보드 붙여넣기**: Cmd+V로 이미지→사진요소, 텍스트→텍스트요소
 - **테마**: 5 프리셋 + 5 커스텀 슬롯, CSS 변수 기반 (`--color-primary` 등)
 - **앱 줌**: Cmd+스크롤 또는 설정 슬라이더 (50~150%), settings DB에 영속
 - **PNG 내보내기**: 캔버스를 PNG로 저장 (`save_png` 커맨드)
-- **화면 캡처**: macOS `screencapture` 경유 PNG 저장
+- **화면 캡처**: Python Quartz로 CGWindowID 획득 → `screencapture -l <wid> -x` 로 그림자 포함 알파채널 PNG 캡처 (투명 코너 + 네이티브 그림자 보존)
 - **백업**: JSON으로 전체 DB 내보내기/불러오기 (트랜잭션으로 원자적 처리)
 - **월간 뷰**: 캘린더 + 목표/버킷리스트/D-Day/프로필
 - **저장**: SQLite, 날짜별 JSON 저장
 
 ## Sidebar 구조
 - 아이콘만 표시 (텍스트 없음), 24px 아이콘, 44px 버튼
-- 상단: 트래픽라이트 → 연/월 → 월간/일간 탭 → 내보내기 → 프라이버시 토글 알약
+- 상단: 트래픽라이트 → 연/월 → 월간/일간 탭 → 내보내기
 - 하단: 저장 → 설정
-- 프라이버시 토글: 48×18px 알약, ON=primary-dark 배경+흰글씨, OFF=투명+border
+- (프라이버시 토글 알약 제거됨 — 내보내기 미리보기 모달로 이동)
 
 ## SettingsPanel 구조 (우측 패널)
 - **테마 탭**: 프리셋 5종 + 커스텀 5슬롯 (인라인 에디터) + 전체 폰트 선택
-- **화면 탭**: 줌 슬라이더 (50~150%) + 초기화 버튼
+- **화면 탭**: 다이어리 이름 입력 + 줌 슬라이더 (50~150%) + 유령 모드 강도 슬라이더 (모자이크/블러) + 초기화 버튼
 - **백업 버튼**: 내보내기 / 불러오기 (JSON 파일)
 
 ## CropModal 동작 방식
@@ -181,7 +182,7 @@ api.sticker    listPacks(), getDir(), pickDir()
 api.fonts      list()
 api.shell      openUrl(url)
 api.http       fetchText(url), fetchImageB64(url)
-api.export     savePng(b64), captureScreenshot()
+api.export     savePng(b64, filename), captureToB64(), captureScreenshot()
 api.backup     export(), import()
 ```
 
@@ -203,6 +204,7 @@ api.backup     export(), import()
 | `globalProfile` | JSON ({name,bio,photo}) | 프로필 (월간 뷰) |
 | `ghostBlurIntensity` | float string | 유령 블러 강도 |
 | `ghostMosaicIntensity` | float string | 유령 모자이크 강도 |
+| `diaryName` | string | 다이어리 이름 (내보내기 파일명에 사용) |
 | `scrap_defaults` | JSON | 스크랩 카드 기본값 |
 
 ## Rust 커맨드 목록
@@ -229,7 +231,7 @@ list_system_fonts
 resize_window, window_start_dragging, window_close, window_minimize, window_toggle_maximize
 
 # 내보내기
-save_png, capture_screenshot_to
+save_png(b64, filename), capture_screenshot_to, capture_screenshot_b64
 
 # 백업
 backup_export_to, backup_import_from   ← import는 트랜잭션으로 원자적 처리

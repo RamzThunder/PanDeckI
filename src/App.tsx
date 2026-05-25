@@ -26,7 +26,7 @@ export default function App(): JSX.Element {
   const [fontOffsetY, setFontOffsetY] = useState(0)
   const [mosaicIntensity, setMosaicIntensity] = useState(14)
   const [blurIntensity, setBlurIntensity] = useState(12)
-  const [exportPrivacy, setExportPrivacy] = useState(true)
+  const [diaryName, setDiaryName] = useState('on_diary')
 
   const zoomRef = useRef(appZoom)
   zoomRef.current = appZoom
@@ -74,6 +74,9 @@ export default function App(): JSX.Element {
 
       const savedBlur = await api.settings.get('ghostBlurIntensity').catch(() => null)
       if (savedBlur) { const v = parseInt(savedBlur); if (!isNaN(v)) setBlurIntensity(v) }
+
+      const savedDiaryName = await api.settings.get('diaryName').catch(() => null)
+      if (savedDiaryName) setDiaryName(savedDiaryName)
     }
     loadSettings()
     api.fonts.list().then(fonts => setSystemFonts(fonts)).catch(() => {})
@@ -157,6 +160,11 @@ export default function App(): JSX.Element {
     api.settings.set('ghostBlurIntensity', v.toString()).catch(() => {})
   }
 
+  const handleDiaryNameChange = (name: string) => {
+    setDiaryName(name)
+    api.settings.set('diaryName', name).catch(() => {})
+  }
+
   return (
     <div style={{
       width: CANVAS_W, height: CANVAS_H,
@@ -177,8 +185,6 @@ export default function App(): JSX.Element {
         themeOpen={showSettings}
         onSave={() => window.dispatchEvent(new CustomEvent('diary-manual-save'))}
         onExport={() => window.dispatchEvent(new CustomEvent('diary-export-png'))}
-        exportPrivacy={exportPrivacy}
-        onPrivacyToggle={() => setExportPrivacy(v => !v)}
       />
       <main style={{ flex: 1, overflow: 'hidden' }}>
         {nav.viewMode === 'monthly' && (
@@ -188,6 +194,7 @@ export default function App(): JSX.Element {
             onNext={nav.goToNext}
             onDayClick={(date) => { nav.goToDate(date); nav.setViewMode('daily') }}
             onNavigate={nav.goToDate}
+            diaryName={diaryName}
           />
         )}
         {nav.viewMode === 'daily' && (
@@ -201,7 +208,7 @@ export default function App(): JSX.Element {
               globalFont={globalFont}
               mosaicIntensity={mosaicIntensity}
               blurIntensity={blurIntensity}
-              exportPrivacy={exportPrivacy}
+              diaryName={diaryName}
             />
           </div>
         )}
@@ -222,6 +229,8 @@ export default function App(): JSX.Element {
           onMosaicIntensityChange={handleMosaicIntensityChange}
           blurIntensity={blurIntensity}
           onBlurIntensityChange={handleBlurIntensityChange}
+          diaryName={diaryName}
+          onDiaryNameChange={handleDiaryNameChange}
           systemFonts={systemFonts}
           onClose={() => setShowSettings(false)}
         />

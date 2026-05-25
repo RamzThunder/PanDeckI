@@ -8,6 +8,7 @@ interface Props {
   onNext: () => void
   onDayClick: (date: Date) => void
   onNavigate: (date: Date) => void
+  diaryName: string
 }
 
 interface DayNote {
@@ -46,13 +47,14 @@ function getDaysInMonth(year: number, month: number): Date[] {
   return days
 }
 
-export default function MonthlyView({ currentDate, onPrev, onNext, onDayClick, onNavigate }: Props): JSX.Element {
+export default function MonthlyView({ currentDate, onPrev, onNext, onDayClick, onNavigate, diaryName }: Props): JSX.Element {
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
   const days = getDaysInMonth(year, month)
   const todayStr = toLocalDate(new Date())
   const yearMonth = toYearMonth(currentDate)
 
+  const [exportPreview, setExportPreview] = useState<{ dataUrl: string; filename: string } | null>(null)
   const [entryDates, setEntryDates] = useState<string[]>([])
   const [dayBgs, setDayBgs] = useState<Record<string, DayBg>>({})
   const [goals, setGoals] = useState<GoalItem[]>([])
@@ -76,10 +78,20 @@ export default function MonthlyView({ currentDate, onPrev, onNext, onDayClick, o
   const [monthlyMotto, setMonthlyMotto] = useState('')
   const [saved, setSaved] = useState(false)
 
+  const rootRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const noteMenuRef = useRef<HTMLDivElement>(null)
   const yearPickerRef = useRef<HTMLDivElement>(null)
   const textInputRef = useRef<HTMLTextAreaElement>(null)
+
+  const getMenuPos = (e: React.MouseEvent) => {
+    const root = rootRef.current
+    if (!root) return { x: e.clientX, y: e.clientY }
+    const rect = root.getBoundingClientRect()
+    const scaleX = rect.width / root.offsetWidth
+    const scaleY = rect.height / root.offsetHeight
+    return { x: (e.clientX - rect.left) / scaleX, y: (e.clientY - rect.top) / scaleY }
+  }
   const notesKey = `monthlyNotes_${yearMonth}`
   const goalsKey = `monthlyGoals_${yearMonth}`
   const mottoKey = `monthlyMotto_${yearMonth}`
@@ -145,10 +157,22 @@ export default function MonthlyView({ currentDate, onPrev, onNext, onDayClick, o
   }, [])
 
   useEffect(() => {
-    const onExportPng = () => { api.export.captureScreenshot().catch(() => {}) }
+    const onExportPng = async () => {
+      const b64 = await api.export.captureToB64().catch(() => '')
+      if (!b64) return
+      const now = new Date()
+      const yy  = String(now.getFullYear()).slice(2)
+      const mm  = String(now.getMonth() + 1).padStart(2, '0')
+      const dd  = String(now.getDate()).padStart(2, '0')
+      const hh  = String(now.getHours()).padStart(2, '0')
+      const min = String(now.getMinutes()).padStart(2, '0')
+      const safeName = (diaryName || 'on_diary').replace(/\s+/g, '_')
+      const filename = `${safeName}_${yy}${mm}${dd}_${hh}${min}.png`
+      setExportPreview({ dataUrl: `data:image/png;base64,${b64}`, filename })
+    }
     window.addEventListener('diary-export-png', onExportPng)
     return () => window.removeEventListener('diary-export-png', onExportPng)
-  }, [])
+  }, [diaryName])
 
   const saveNotes = (updated: Record<string, DayNote[]>) => {
     setMonthlyNotes(updated)
@@ -222,7 +246,8 @@ export default function MonthlyView({ currentDate, onPrev, onNext, onDayClick, o
     if (!isCurrentMonth) return
     e.preventDefault()
     const dateStr = toLocalDate(day)
-    setContextMenu({ x: e.clientX, y: e.clientY, date: day, dateStr })
+    const pos = getMenuPos(e)
+    setContextMenu({ x: pos.x, y: pos.y, date: day, dateStr })
     setNoteCtxMenu(null)
     setAddingTextDate(null)
   }
@@ -230,7 +255,8 @@ export default function MonthlyView({ currentDate, onPrev, onNext, onDayClick, o
   const handleNoteContextMenu = (e: React.MouseEvent, dateStr: string, noteId: string, noteType: string) => {
     e.preventDefault()
     e.stopPropagation()
-    setNoteCtxMenu({ x: e.clientX, y: e.clientY, dateStr, noteId, noteType })
+    const pos = getMenuPos(e)
+    setNoteCtxMenu({ x: pos.x, y: pos.y, dateStr, noteId, noteType })
     setContextMenu(null)
   }
 
@@ -269,16 +295,16 @@ export default function MonthlyView({ currentDate, onPrev, onNext, onDayClick, o
     : null
 
   return (
-    <div className="flex h-full relative" onClick={dismissAll}>
+    <div ref={rootRef} className="flex h-full relative" onClick={dismissAll}>
       {/* Left panel */}
       <div className="w-56 shrink-0 flex flex-col overflow-hidden"
         style={{ borderRight: '1px solid var(--color-border)', background: 'var(--color-primary-light)' }}>
-        <div className="flex flex-col gap-3 p-4 overflow-y-auto flex-1">
+        <div className="flex flex-col gap-3 p-5 overflow-y-auto flex-1">
 
           {/* PROFILE */}
           <section style={{
             borderRadius: 14, overflow: 'hidden',
-            border: '1.5px solid var(--color-border)', background: '#fff',
+            border: '1px solid var(--color-border)', background: '#fff',
           }}>
             <div className="text-xs font-bold tracking-widest text-center py-1.5"
               style={{ background: 'var(--color-primary)', color: '#fff', borderBottom: '1px solid var(--color-border)', letterSpacing: '0.12em' }}>
@@ -331,7 +357,7 @@ export default function MonthlyView({ currentDate, onPrev, onNext, onDayClick, o
             const cur = ddays[0] ?? null
             const showForm = !cur || editingDDay
             return (
-              <section style={{ borderRadius: 14, overflow: 'hidden', border: '1.5px solid var(--color-border)', background: '#fff' }}>
+              <section style={{ borderRadius: 14, overflow: 'hidden', border: '1px solid var(--color-border)', background: '#fff' }}>
                 <div className="text-xs font-bold tracking-widest text-center py-1.5"
                   style={{ background: 'var(--color-primary)', color: '#fff', borderBottom: '1px solid var(--color-border)', letterSpacing: '0.12em' }}>
                   D-DAY
@@ -548,9 +574,10 @@ export default function MonthlyView({ currentDate, onPrev, onNext, onDayClick, o
           </div>
         </div>
 
-        {/* Calendar grid — weekday headers + day cells in one CSS grid */}
+        {/* Calendar grid */}
+        <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         <div style={{
-          flex: 1, minHeight: 0,
+          width: '100%', height: '100%',
           display: 'grid',
           gridTemplateColumns: 'repeat(7, 1fr)',
           gridTemplateRows: `auto repeat(${days.length / 7}, 1fr)`,
@@ -589,8 +616,6 @@ export default function MonthlyView({ currentDate, onPrev, onNext, onDayClick, o
                   cursor: isCurrentMonth ? 'pointer' : 'default',
                   background: dayBg?.bg ?? (isCurrentMonth ? 'rgba(255,255,255,0.5)' : 'var(--color-bg)'),
                   position: 'relative', overflow: 'hidden',
-                  outline: isToday ? '3px solid var(--color-primary)' : 'none',
-                  outlineOffset: '-2px',
                 }}>
 
                 {dayBg?.bgImage && (
@@ -605,7 +630,7 @@ export default function MonthlyView({ currentDate, onPrev, onNext, onDayClick, o
 
                 <span style={{
                   fontSize: 10, fontWeight: isToday ? 700 : 400, display: 'block',
-                  padding: '3px 4px', position: 'relative', zIndex: 10,
+                  padding: '3px 4px', position: 'relative', zIndex: 20,
                   color: day.getDay() === 0 ? 'var(--color-primary-dark)' : 'var(--color-text)',
                   opacity: isCurrentMonth ? 1 : 0.5,
                 }}>
@@ -614,7 +639,7 @@ export default function MonthlyView({ currentDate, onPrev, onNext, onDayClick, o
 
                 {notes.length > 0 && !isAddingText && (
                   <div style={{
-                    position: 'absolute', top: 18, left: 2, right: 2, bottom: 2,
+                    position: 'absolute', inset: 0,
                     display: 'flex', flexDirection: 'column',
                     alignItems: 'center', justifyContent: 'center',
                     gap: 2, overflow: 'hidden', zIndex: 10,
@@ -688,16 +713,33 @@ export default function MonthlyView({ currentDate, onPrev, onNext, onDayClick, o
                   </div>
                 )}
 
-                {hasEntry && !dayBg?.bgImage && notes.length === 0 && !isAddingText && (
-                  <div style={{
-                    position: 'absolute', bottom: 4, left: '50%', transform: 'translateX(-50%)',
-                    width: 4, height: 4, borderRadius: '50%', zIndex: 10,
-                    background: 'var(--color-primary-dark)',
-                  }} />
-                )}
               </div>
             )
           })}
+        </div>
+
+        {/* Today outline overlay — overflow:hidden 밖에 렌더, 외곽선이 항상 최상위 */}
+        <div style={{
+          position: 'absolute', top: 1, left: 1, right: 1, bottom: 1,
+          display: 'grid',
+          gridTemplateColumns: 'repeat(7, 1fr)',
+          gridTemplateRows: `auto repeat(${days.length / 7}, 1fr)`,
+          pointerEvents: 'none',
+          zIndex: 10,
+        }}>
+          {WEEKDAYS.map(w => (
+            <div key={w} style={{ padding: '5px 0', fontSize: 9, fontWeight: 700, visibility: 'hidden' }}>{w}</div>
+          ))}
+          {days.map((day, i) => {
+            const isToday = toLocalDate(day) === todayStr
+            return (
+              <div key={`ov-${i}`} style={isToday ? {
+                outline: '3px solid var(--color-primary)',
+                outlineOffset: '-2px',
+              } : {}} />
+            )
+          })}
+        </div>
         </div>
 
       </div>
@@ -751,7 +793,7 @@ export default function MonthlyView({ currentDate, onPrev, onNext, onDayClick, o
       {/* Cell context menu */}
       {contextMenu && (
         <div ref={menuRef}
-          className="fixed z-50 rounded-xl shadow-2xl py-1 overflow-hidden"
+          className="absolute z-50 rounded-xl shadow-2xl py-1 overflow-hidden"
           style={{ left: contextMenu.x, top: contextMenu.y, background: '#fff', border: '1px solid var(--color-border)', minWidth: 130 }}
           onClick={e => e.stopPropagation()}>
           <div className="px-3 py-1.5 text-xs font-semibold" style={{ color: 'var(--color-text-muted)', borderBottom: '1px solid var(--color-border)' }}>
@@ -776,7 +818,7 @@ export default function MonthlyView({ currentDate, onPrev, onNext, onDayClick, o
       {/* Note context menu */}
       {noteCtxMenu && (
         <div ref={noteMenuRef}
-          className="fixed z-50 rounded-xl shadow-2xl py-1 overflow-hidden"
+          className="absolute z-50 rounded-xl shadow-2xl py-1 overflow-hidden"
           style={{ left: noteCtxMenu.x, top: noteCtxMenu.y, background: '#fff', border: '1px solid var(--color-border)', minWidth: 150 }}
           onClick={e => e.stopPropagation()}>
           {noteCtxMenu.noteType === 'image' && (
@@ -819,6 +861,41 @@ export default function MonthlyView({ currentDate, onPrev, onNext, onDayClick, o
             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
             삭제
           </button>
+        </div>
+      )}
+
+      {exportPreview && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 999999, background: 'rgba(0,0,0,0.7)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setExportPreview(null)}>
+          <div style={{ background: 'var(--color-bg)', borderRadius: 16, padding: 20, display: 'flex', flexDirection: 'column', gap: 14, maxWidth: '90%', maxHeight: '90%', boxShadow: '0 8px 40px rgba(0,0,0,0.4)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>내보내기 미리보기</p>
+              <button onClick={() => setExportPreview(null)} style={{ fontSize: 18, color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>×</button>
+            </div>
+            <div style={{ overflow: 'auto', borderRadius: 8, border: '1px solid var(--color-border)', background: '#888' }}>
+              <img src={exportPreview.dataUrl} alt="미리보기" draggable={false}
+                style={{ display: 'block', maxWidth: '70vw', maxHeight: '60vh', objectFit: 'contain' }} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 8, background: 'var(--color-primary-light)', border: '1px solid var(--color-border)' }}>
+              <span style={{ fontSize: 11, color: 'var(--color-text-muted)', flexShrink: 0 }}>파일명</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exportPreview.filename}</span>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setExportPreview(null)}
+                style={{ flex: 1, padding: '8px 0', borderRadius: 10, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-muted)', fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>
+                취소
+              </button>
+              <button onClick={async () => {
+                const b64 = exportPreview.dataUrl.split(',')[1]
+                setExportPreview(null)
+                await api.export.savePng(b64, exportPreview.filename)
+              }}
+                style={{ flex: 2, padding: '8px 0', borderRadius: 10, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 700 }}>
+                저장
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

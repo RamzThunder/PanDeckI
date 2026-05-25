@@ -13,8 +13,6 @@ interface Props {
   themeOpen: boolean
   onSave: () => void
   onExport: () => void
-  exportPrivacy: boolean
-  onPrivacyToggle: () => void
 }
 
 const ICONS = {
@@ -48,7 +46,7 @@ const TrafficLight = ({ color, hoverColor, onClick }: { color: string; hoverColo
   )
 }
 
-export default function Sidebar({ viewMode, currentDate, onViewChange, onThemeToggle, themeOpen, onSave, onExport, exportPrivacy, onPrivacyToggle }: Props): JSX.Element {
+export default function Sidebar({ viewMode, currentDate, onViewChange, onThemeToggle, themeOpen, onSave, onExport }: Props): JSX.Element {
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth() + 1
 
@@ -103,25 +101,7 @@ export default function Sidebar({ viewMode, currentDate, onViewChange, onThemeTo
         {ICONS.export}
       </button>
 
-      {/* 프라이버시 토글 */}
-      <button
-        onClick={onPrivacyToggle}
-        title={exportPrivacy ? '프라이버시 보호 필터 ON — 클릭하여 끄기' : '프라이버시 보호 필터 OFF — 클릭하여 켜기'}
-        style={{
-          width: 48, height: 18, borderRadius: 9,
-          fontSize: 9, fontWeight: 700, letterSpacing: '0.02em',
-          cursor: 'pointer', border: 'none', outline: 'none',
-          transition: 'background 0.2s, color 0.2s',
-          background: exportPrivacy ? 'var(--color-primary)' : 'transparent',
-          color: exportPrivacy ? '#fff' : 'var(--color-text-muted)',
-          boxShadow: exportPrivacy ? 'none' : 'inset 0 0 0 1px var(--color-border)',
-          flexShrink: 0,
-        }}
-      >
-        {exportPrivacy ? '필터 켜짐' : '필터 꺼짐'}
-      </button>
-
-      <div className="flex-1" style={{ width: '100%', cursor: 'move' }} onMouseDown={startDrag} />
+<div className="flex-1" style={{ width: '100%', cursor: 'move' }} onMouseDown={startDrag} />
 
       {/* 수동 저장 버튼 (설정 버튼 위) */}
       <button
