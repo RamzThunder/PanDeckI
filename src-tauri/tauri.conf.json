@@ -1,6 +1,6 @@
 {
   "productName": "dida",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "identifier": "com.subinlee.ondiary",
   "build": {
     "frontendDist": "../dist",

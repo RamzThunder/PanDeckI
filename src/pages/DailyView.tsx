@@ -215,7 +215,7 @@ function getPhotoClipStyle(shape: string, customShapes: CustomShape[]): React.CS
 
 function getVideoEmbedUrl(url: string): string | null {
   const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|live\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/)
-  if (yt) return `https://www.youtube.com/embed/${yt[1]}?rel=0&playsinline=1`
+  if (yt) return `https://www.youtube-nocookie.com/embed/${yt[1]}?rel=0&playsinline=1`
   const vimeo = url.match(/vimeo\.com\/(\d+)/)
   if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}?playsinline=1`
   return null
