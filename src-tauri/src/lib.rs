@@ -72,7 +72,7 @@ fn resolve_db_path(app: &tauri::App) -> PathBuf {
     {
         let icloud_dir = dirs::home_dir()
             .expect("no home dir")
-            .join("Library/Mobile Documents/com~apple~CloudDocs/on_diary_data");
+            .join("Library/Mobile Documents/com~apple~CloudDocs/dida_data");
         if std::fs::create_dir_all(&icloud_dir).is_ok() {
             return icloud_dir.join("diary.db");
         }

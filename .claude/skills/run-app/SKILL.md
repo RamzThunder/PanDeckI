@@ -21,7 +21,7 @@ description: Launch the on-diary Tauri desktop app in dev mode
 
 ```bash
 export PATH="/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
-export CARGO_TARGET_DIR="$HOME/cargo_targets/on_diary"
+export CARGO_TARGET_DIR="$HOME/cargo_targets/dida"
 npm run tauri dev > /tmp/tauri-dev.log 2>&1 &
 echo "PID: $!"
 ```
@@ -35,7 +35,7 @@ echo "PID: $!"
 until grep -q "Running.*on-diary\|error\[" /tmp/tauri-dev.log 2>/dev/null; do sleep 2; done && tail -15 /tmp/tauri-dev.log
 ```
 
-- `Finished` + `Running /Users/hozac/cargo_targets/on_diary/debug/on-diary` 가 보이면 성공
+- `Finished` + `Running /Users/hozac/cargo_targets/dida/debug/on-diary` 가 보이면 성공
 - `error[` 가 보이면 컴파일 에러 — 로그 전체 확인 필요
 
 ## 강제 종료

@@ -351,13 +351,13 @@ export default function SettingsPanel({
                 type="text"
                 value={diaryName}
                 onChange={e => onDiaryNameChange(e.target.value)}
-                placeholder="on_diary"
+                placeholder="dida"
                 className="w-full text-xs px-3 py-2 rounded-lg outline-none"
                 style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }}
               />
               <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                내보내기 파일명에 사용돼요. 
-                <p></p>(미리보기: {(diaryName || 'on_diary').replace(/\s+/g, '_')}_260524_2156.png)
+                내보내기 파일명에 사용돼요.
+                <p></p>(미리보기: {(diaryName || 'dida').replace(/\s+/g, '_')}_260524_2156.png)
               </p>
             </section>
 

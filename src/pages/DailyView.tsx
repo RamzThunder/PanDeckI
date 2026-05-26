@@ -924,7 +924,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
     const dd  = String(now.getDate()).padStart(2, '0')
     const hh  = String(now.getHours()).padStart(2, '0')
     const min = String(now.getMinutes()).padStart(2, '0')
-    const safeName = (diaryName || 'on_diary').replace(/\s+/g, '_')
+    const safeName = (diaryName || 'dida').replace(/\s+/g, '_')
     const filename = `${safeName}_${yy}${mm}${dd}_${hh}${min}.png`
     setExportPreview({ dataUrl, filename, privacy: true })
   }, [buildExportDataUrl, diaryName])

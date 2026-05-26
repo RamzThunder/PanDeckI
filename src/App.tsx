@@ -29,7 +29,7 @@ export default function App(): JSX.Element {
   const [fontOffsetY, setFontOffsetY] = useState(0)
   const [mosaicIntensity, setMosaicIntensity] = useState(14)
   const [blurIntensity, setBlurIntensity] = useState(12)
-  const [diaryName, setDiaryName] = useState('on_diary')
+  const [diaryName, setDiaryName] = useState('dida')
 
   const zoomRef = useRef(appZoom)
   zoomRef.current = appZoom

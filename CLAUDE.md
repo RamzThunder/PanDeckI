@@ -17,10 +17,10 @@
 - macOS 26 (Tahoe 베타, Darwin 25)에서 Electron 전 버전 동작 불가 → Tauri로 전환
 - Cargo가 PATH에 없을 수 있으므로 실행 전 export 필요
 - **iCloud Drive 주의**: `target/` 폴더를 iCloud가 동기화하려다 타임아웃 발생. `CARGO_TARGET_DIR`을 로컬로 설정
-- **올바른 실행 명령** (프로젝트 위치: `~/Desktop/on-diary`):
+- **올바른 실행 명령** (프로젝트 위치: `~/Documents/on-diary`):
   ```bash
   export PATH="/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
-  export CARGO_TARGET_DIR="$HOME/cargo_targets/on_diary"
+  export CARGO_TARGET_DIR="$HOME/cargo_targets/dida"
   npm run tauri dev
   ```
 - 프로젝트 스킬 있음: `.claude/skills/run-app/SKILL.md` 참고
@@ -251,7 +251,7 @@ open_url
 
 ## 자동 업데이트 (Auto-Update)
 - **방식**: GitHub Releases + `tauri-plugin-updater` (서명 키 기반, Apple 개발자 계정 불필요)
-- **서명 키**: `~/.tauri/on-diary.key` (로컬), 공개키는 `tauri.conf.json`에 포함
+- **서명 키**: `~/.tauri/dida.key` (로컬), 공개키는 `tauri.conf.json`에 포함
 - **GitHub Secret**: `TAURI_SIGNING_PRIVATE_KEY` (비밀번호 없음)
 - **릴리즈 방법**: 버전 태그 푸쉬 → GitHub Actions 자동 빌드 (macOS aarch64 + Windows x86_64 병렬)
   ```bash
@@ -272,7 +272,7 @@ open_url
 | 폰트 목록 | Python3 + NSFontManager | PowerShell + InstalledFontCollection |
 | 화면 캡처 | screencapture + Python Quartz | PowerShell PrintWindow(Win32 API) |
 | URL 열기 | `open` 명령 | `cmd /c start` |
-| DB 기본 경로 | iCloud Drive (`~/Library/Mobile Documents/...`) | AppData (`%APPDATA%/com.subinlee.ondiary/`) |
+| DB 기본 경로 | iCloud Drive (`~/Library/Mobile Documents/...`) | AppData (`%APPDATA%/com.subinlee.dida/`) |
 
 ## 성능 관련 주의사항
 - **base64 이미지**: CanvasEl의 `content`에 base64 dataURL을 저장하므로 엔트리 JSON이 매우 커질 수 있음
@@ -289,11 +289,11 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 brew install node
 
 # 3. 의존성 설치
-cd ~/Desktop/on-diary
+cd ~/Documents/on-diary
 npm install
 
 # 4. 앱 실행
 export PATH="/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
-export CARGO_TARGET_DIR="$HOME/cargo_targets/on_diary"
+export CARGO_TARGET_DIR="$HOME/cargo_targets/dida"
 npm run tauri dev
 ```
