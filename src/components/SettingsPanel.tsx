@@ -52,6 +52,19 @@ const COLOR_FIELDS: { key: keyof Theme; label: string }[] = [
 
 type Tab = 'info' | 'display' | 'detail'
 
+const CURRENCIES = [
+  { code: 'KRW', symbol: '₩',   label: '원 (₩)' },
+  { code: 'USD', symbol: '$',   label: '달러 ($)' },
+  { code: 'JPY', symbol: '¥',   label: '엔 (¥)' },
+  { code: 'CNY', symbol: '元',  label: '위안 (元)' },
+  { code: 'GBP', symbol: '£',   label: '파운드 (£)' },
+  { code: 'EUR', symbol: '€',   label: '유로 (€)' },
+  { code: 'HKD', symbol: 'HK$', label: '홍콩달러 (HK$)' },
+  { code: 'THB', symbol: '฿',   label: '바트 (฿)' },
+  { code: 'TWD', symbol: 'NT$', label: '대만달러 (NT$)' },
+  { code: 'SGD', symbol: 'S$',  label: '싱가포르달러 (S$)' },
+]
+
 type ScrapFieldType = 'text' | 'select' | 'boolean' | 'color' | 'number' | 'geocode'
 interface ScrapField { key: string; label: string; type?: ScrapFieldType; options?: string[] }
 
@@ -201,6 +214,7 @@ export default function SettingsPanel({
   const [showFontList, setShowFontList] = useState(false)
   const [recentColors, setRecentColors] = useState<Record<string, string[]>>({})
   const [allDefaults, setAllDefaults] = useState<Record<string, Record<string, string>>>({})
+  const [defaultCurrency, setDefaultCurrency] = useState('KRW')
   const [selectedScrapTpl, setSelectedScrapTpl] = useState<string | null>(null)
   const [dbPath, setDbPath] = useState('')
   const [dbPending, setDbPending] = useState(false)
@@ -228,7 +242,15 @@ export default function SettingsPanel({
       if (rawRecentFonts) try { setRecentFonts(JSON.parse(rawRecentFonts)) } catch {}
 
       const rawScrap = await api.settings.get('scrap_defaults').catch(() => null)
-      if (rawScrap) try { setAllDefaults(JSON.parse(rawScrap)) } catch {}
+      if (rawScrap) try {
+        const parsed = JSON.parse(rawScrap)
+        const { _currency, ...rest } = parsed
+        if (_currency) setDefaultCurrency(_currency)
+        setAllDefaults(rest)
+      } catch {}
+
+      const rawCurrency = await api.settings.get('defaultCurrency').catch(() => null)
+      if (rawCurrency) setDefaultCurrency(rawCurrency)
 
       const path = await api.db.getPath().catch(() => '')
       setDbPath(path)
@@ -659,6 +681,19 @@ export default function SettingsPanel({
 
               <section>
                 <p className="text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>스크랩 옵션</p>
+                <div className="mb-3">
+                  <p className="text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>기본 통화</p>
+                  <select
+                    value={defaultCurrency}
+                    onChange={e => {
+                      setDefaultCurrency(e.target.value)
+                      api.settings.set('defaultCurrency', e.target.value).catch(() => {})
+                    }}
+                    className="w-full text-xs px-2 py-1.5 rounded-lg outline-none"
+                    style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }}>
+                    {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+                  </select>
+                </div>
                 {/* Template picker */}
                 <div className="flex flex-wrap gap-1.5 mb-3">
                   {SCRAP_TPL_LIST.map(t => (

@@ -5,6 +5,29 @@ import CropModal from './CropModal'
 
 const CropCtx = React.createContext<((src: string, frame: { w: number; h: number }) => Promise<string | null>) | null>(null)
 
+// ── Currency ───────────────────────────────────────────────────────────────────
+
+const CURRENCIES = [
+  { code: 'KRW', symbol: '₩',   label: '원 (₩)' },
+  { code: 'USD', symbol: '$',   label: '달러 ($)' },
+  { code: 'JPY', symbol: '¥',   label: '엔 (¥)' },
+  { code: 'CNY', symbol: '元',  label: '위안 (元)' },
+  { code: 'GBP', symbol: '£',   label: '파운드 (£)' },
+  { code: 'EUR', symbol: '€',   label: '유로 (€)' },
+  { code: 'HKD', symbol: 'HK$', label: '홍콩달러 (HK$)' },
+  { code: 'THB', symbol: '฿',   label: '바트 (฿)' },
+  { code: 'TWD', symbol: 'NT$', label: '대만달러 (NT$)' },
+  { code: 'SGD', symbol: 'S$',  label: '싱가포르달러 (S$)' },
+]
+
+function parsePriceValue(value: string): { code: string; amount: string } {
+  const sorted = [...CURRENCIES].sort((a, b) => b.symbol.length - a.symbol.length)
+  for (const c of sorted) {
+    if (value.startsWith(c.symbol)) return { code: c.code, amount: value.slice(c.symbol.length) }
+  }
+  return { code: '', amount: value }
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 type Category = 'hobby' | 'spend' | 'travel' | 'food' | 'archive' | 'style'
@@ -14,7 +37,7 @@ interface BaseballData { bgImageB64: string; away: string; homeScore: string; aw
 interface TicketData { category: '영화' | '공연' | '전시' | '기타'; title: string; date: string; time: string; venue: string; seat: string; price: string; photoB64: string }
 interface GameData { screenshotB64: string; title: string; date: string; oneiner: string; frameColor: string; frameBgB64: string }
 interface ReceiptItem { name: string; price: string }
-interface ReceiptData { store: string; date: string; items: ReceiptItem[]; footer: string }
+interface ReceiptData { store: string; date: string; items: ReceiptItem[]; footer: string; currency?: string }
 interface WishlistData { item: string; price: string; wishScore: number; photoB64: string; oneiner: string; date: string; link: string }
 interface TransportData { type: 'KTX' | 'SRT' | '버스' | '지하철' | '비행기' | '기타'; typeLabel: string; from: string; to: string; date: string; departureTime: string; vehicleNumber: string; seat: string; price: string }
 interface CheckinData { place: string; category: string; address: string; date: string; rating: number; purpose: string; companions: string; memo: string; link: string }
@@ -493,9 +516,10 @@ function drawReceipt(d: ReceiptData, font: string): { dataUrl: string; w: number
   y += 8; ctx.strokeStyle = '#333'; ctx.lineWidth = 1
   ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke(); y += 14
 
+  const curSym = CURRENCIES.find(c => c.code === (d.currency ?? 'KRW'))?.symbol ?? '₩'
   ctx.fillStyle = '#1a1a1a'; ctx.font = `bold 13px ${f}`
   ctx.textAlign = 'left'; ctx.fillText('합계', pad, y)
-  ctx.textAlign = 'right'; ctx.fillText(`${total.toLocaleString()}원`, W - pad, y); y += 26
+  ctx.textAlign = 'right'; ctx.fillText(`${curSym}${total.toLocaleString()}`, W - pad, y); y += 26
 
   if (d.footer) { ctx.fillStyle = '#C0B8A8'; ctx.font = `10px ${f}`; ctx.textAlign = 'center'; ctx.fillText(d.footer, W / 2, y) }
   return { dataUrl: finish(canvas), w: W, h: H }
@@ -1665,7 +1689,7 @@ function defaultData(id: TemplateId, tplDef: Record<string, string> = {}): AnyDa
     case 'baseball':  return { bgImageB64: '', away: '', homeScore: '', awayScore: '', venue: '', date: today, seat: '', memo: '', isAway: false, homeTeam: '삼성 라이온즈' }
     case 'ticket':    return { category: '영화', title: '', date: today, time: '', venue: '', seat: '', price: '', photoB64: '' }
     case 'game':      return { screenshotB64: '', title: '', date: today, oneiner: '', frameColor: '#f9f8f6', frameBgB64: '' }
-    case 'receipt':   return { store: '', date: today, items: [{ name: '', price: '' }], footer: '감사합니다 ✦' }
+    case 'receipt':   return { store: '', date: today, items: [{ name: '', price: '' }], footer: '감사합니다 ✦', currency: 'KRW' }
     case 'wishlist':  return { item: '', price: '', wishScore: 3, photoB64: '', oneiner: '', date: today, link: '' }
     case 'transport': return { type: 'KTX', typeLabel: '', from: '', to: '', date: today, departureTime: '', vehicleNumber: '', seat: '', price: '' }
     case 'checkin':   return { place: '', category: '', address: '', date: today, rating: 4.5, purpose: '', companions: '', memo: '', link: '' }
@@ -2040,6 +2064,40 @@ function F({ label, value, onChange, placeholder = '' }: { label: string; value:
   )
 }
 
+function PriceF({ label, value, onChange, placeholder = '' }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+  const parsed = parsePriceValue(value)
+  const [code, setCode] = useState(parsed.code || 'KRW')
+  const [amount, setAmount] = useState(parsed.amount)
+
+  useEffect(() => {
+    if (parsed.code) return
+    api.settings.get('defaultCurrency').then(v => {
+      if (v) setCode(v)
+    }).catch(() => {})
+  }, [])
+
+  const emit = (c: string, a: string) => {
+    const sym = CURRENCIES.find(x => x.code === c)?.symbol ?? ''
+    onChange(a ? sym + a : '')
+  }
+
+  return (
+    <div style={{ marginBottom: 9 }}>
+      <div style={lbl}>{label}</div>
+      <div style={{ display: 'flex', gap: 4 }}>
+        <select value={code}
+          onChange={e => { setCode(e.target.value); emit(e.target.value, amount) }}
+          style={{ ...inp, width: 54, flexShrink: 0, paddingLeft: 4, paddingRight: 2, cursor: 'pointer' }}>
+          {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.symbol}</option>)}
+        </select>
+        <input value={amount}
+          onChange={e => { setAmount(e.target.value); emit(code, e.target.value) }}
+          placeholder={placeholder} style={{ ...inp, flex: 1 }} />
+      </div>
+    </div>
+  )
+}
+
 function Row({ children }: { children: React.ReactNode }) {
   return <div style={{ display: 'grid', gridTemplateColumns: `repeat(${React.Children.count(children)}, 1fr)`, gap: 8 }}>{children}</div>
 }
@@ -2163,7 +2221,7 @@ function TicketForm({ d, u }: { d: TicketData; u: (p: Partial<TicketData>) => vo
     ) : (
       <F label="장소" value={d.venue} onChange={v => u({ venue: v })} placeholder="장소" />
     )}
-    <F label="가격 (선택)" value={d.price} onChange={v => u({ price: v })} placeholder="12000" />
+    <PriceF label="가격 (선택)" value={d.price} onChange={v => u({ price: v })} placeholder="12000" />
   </>
 }
 
@@ -2225,17 +2283,29 @@ function GameForm({ d, u }: { d: GameData; u: (p: Partial<GameData>) => void }) 
 function ReceiptForm({ d, u }: { d: ReceiptData; u: (p: Partial<ReceiptData>) => void }) {
   const setItem = (i: number, p: Partial<ReceiptItem>) =>
     u({ items: d.items.map((it, idx) => idx === i ? { ...it, ...p } : it) })
+  const currency = d.currency ?? 'KRW'
+  const curSym = CURRENCIES.find(c => c.code === currency)?.symbol ?? '₩'
   return <>
     <Row>
       <F label="가게 이름" value={d.store} onChange={v => u({ store: v })} placeholder="집" />
       <F label="날짜" value={d.date} onChange={v => u({ date: v })} placeholder="2026.05.26" />
     </Row>
+    <div style={{ marginBottom: 9 }}>
+      <div style={lbl}>통화</div>
+      <select value={currency} onChange={e => u({ currency: e.target.value })}
+        style={{ ...inp, width: '100%', cursor: 'pointer' }}>
+        {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+      </select>
+    </div>
     <div style={{ marginBottom: 8 }}>
       <div style={lbl}>항목</div>
       {d.items.map((it, i) => (
         <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
           <input value={it.name} onChange={e => setItem(i, { name: e.target.value })} placeholder="메뉴 이름" style={{ ...inp, flex: 1 }} />
-          <input value={it.price} onChange={e => setItem(i, { price: e.target.value })} placeholder="금액" style={{ ...inp, width: 72 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 0, flexShrink: 0 }}>
+            <span style={{ fontSize: 11, color: '#888', padding: '0 4px', background: '#f0f0f0', border: '1px solid #e0e0e0', borderRight: 'none', borderRadius: '6px 0 0 6px', height: 30, display: 'flex', alignItems: 'center' }}>{curSym}</span>
+            <input value={it.price} onChange={e => setItem(i, { price: e.target.value })} placeholder="0" style={{ ...inp, width: 60, borderRadius: '0 6px 6px 0' }} />
+          </div>
           {d.items.length > 1 && (
             <button onClick={() => u({ items: d.items.filter((_, j) => j !== i) })}
               style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#CCC', fontSize: 14, flexShrink: 0 }}>✕</button>
@@ -2254,7 +2324,7 @@ function WishlistForm({ d, u }: { d: WishlistData; u: (p: Partial<WishlistData>)
     <ImgPicker label="제품 사진 (선택)" value={d.photoB64} onChange={v => u({ photoB64: v })} cropFrame={{ w: 260, h: 140 }} />
     <F label="아이템 이름" value={d.item} onChange={v => u({ item: v })} placeholder="닌텐도 스위치 2세대" />
     <Row>
-      <F label="가격" value={d.price} onChange={v => u({ price: v })} placeholder="750000" />
+      <PriceF label="가격" value={d.price} onChange={v => u({ price: v })} placeholder="750000" />
       <F label="날짜" value={d.date} onChange={v => u({ date: v })} placeholder="2026.05.26" />
     </Row>
     <StarRating label="위시 점수 / 구매 만족도" value={d.wishScore} onChange={v => u({ wishScore: v })} />
@@ -2295,7 +2365,7 @@ function TransportForm({ d, u }: { d: TransportData; u: (p: Partial<TransportDat
       <F label="편명 / 차량번호" value={d.vehicleNumber} onChange={v => u({ vehicleNumber: v })} placeholder="KE123 / KTX 101" />
       <F label="좌석 / 게이트" value={d.seat} onChange={v => u({ seat: v })} placeholder="12A / G32" />
     </Row>
-    <F label="가격 (선택)" value={d.price} onChange={v => u({ price: v })} placeholder="59800" />
+    <PriceF label="가격 (선택)" value={d.price} onChange={v => u({ price: v })} placeholder="59800" />
   </>
 }
 

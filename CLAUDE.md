@@ -216,6 +216,7 @@ api.backup     export(), import()
 | `diaryName` | string | 다이어리 이름 (내보내기 파일명에 사용) |
 | `scrap_defaults` | JSON | 스크랩 카드 기본값. skincare.weatherRegion은 `{name,lat,lng,country,admin1}` JSON 문자열 |
 | `recentFonts` | JSON (string[5]) | 최근 선택한 폰트 (폰트 드롭다운 상단 고정) |
+| `defaultCurrency` | string (currency code) | 스크랩 카드 기본 통화 (KRW/USD/JPY/CNY/GBP/EUR/HKD/THB/TWD/SGD) |
 
 ## Rust 커맨드 목록
 ```
