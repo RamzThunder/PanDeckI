@@ -30,6 +30,7 @@ export default function App(): JSX.Element {
   const [mosaicIntensity, setMosaicIntensity] = useState(14)
   const [blurIntensity, setBlurIntensity] = useState(12)
   const [diaryName, setDiaryName] = useState('dida')
+  const [monthlyExportPreview, setMonthlyExportPreview] = useState<{ dataUrl: string; filename: string } | null>(null)
 
   const zoomRef = useRef(appZoom)
   zoomRef.current = appZoom
@@ -195,7 +196,22 @@ export default function App(): JSX.Element {
         onThemeToggle={() => setShowSettings(v => !v)}
         themeOpen={showSettings}
         onSave={() => window.dispatchEvent(new CustomEvent('diary-manual-save'))}
-        onExport={() => window.dispatchEvent(new CustomEvent('diary-export-png'))}
+        onExport={() => {
+          if (nav.viewMode === 'daily') {
+            window.dispatchEvent(new CustomEvent('diary-export-png'))
+          } else {
+            api.export.captureToB64().then(b64 => {
+              const now = new Date()
+              const yy  = String(now.getFullYear()).slice(2)
+              const mm  = String(now.getMonth() + 1).padStart(2, '0')
+              const dd  = String(now.getDate()).padStart(2, '0')
+              const hh  = String(now.getHours()).padStart(2, '0')
+              const min = String(now.getMinutes()).padStart(2, '0')
+              const safeName = (diaryName || 'dida').replace(/\s+/g, '_')
+              setMonthlyExportPreview({ dataUrl: `data:image/png;base64,${b64}`, filename: `${safeName}_${yy}${mm}${dd}_${hh}${min}.png` })
+            }).catch((e: unknown) => console.error('export failed', e))
+          }
+        }}
       />
       <main style={{ flex: 1, overflow: 'hidden' }}
         onPointerDown={e => { if (e.altKey) { e.preventDefault(); invoke('window_start_dragging') } }}>
@@ -225,6 +241,33 @@ export default function App(): JSX.Element {
           </div>
         )}
       </main>
+      {monthlyExportPreview && (
+        <div onClick={() => setMonthlyExportPreview(null)} style={{ position: 'fixed', inset: 0, zIndex: 999999, background: 'rgba(0,0,0,0.7)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--color-bg)', borderRadius: 16, padding: 20, display: 'flex', flexDirection: 'column', gap: 14, maxWidth: '90%', maxHeight: '90%', boxShadow: '0 8px 40px rgba(0,0,0,0.4)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>내보내기 미리보기</p>
+              <button onClick={() => setMonthlyExportPreview(null)} style={{ fontSize: 18, color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>×</button>
+            </div>
+            <div style={{ overflow: 'auto', borderRadius: 8, border: '1px solid var(--color-border)', background: '#888' }}>
+              <img src={monthlyExportPreview.dataUrl} alt="미리보기" draggable={false} style={{ display: 'block', maxWidth: '70vw', maxHeight: '60vh', objectFit: 'contain' }} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 8, flex: 1, background: 'var(--color-primary-light)', border: '1px solid var(--color-border)', overflow: 'hidden' }}>
+                <span style={{ fontSize: 11, color: 'var(--color-text-muted)', flexShrink: 0 }}>파일명</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{monthlyExportPreview.filename}</span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setMonthlyExportPreview(null)} style={{ flex: 1, padding: '8px 0', borderRadius: 10, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-muted)', fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>취소</button>
+              <button onClick={async () => {
+                const b64 = monthlyExportPreview.dataUrl.split(',')[1]
+                setMonthlyExportPreview(null)
+                await api.export.savePng(b64, monthlyExportPreview.filename)
+              }} style={{ flex: 2, padding: '8px 0', borderRadius: 10, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 700 }}>저장</button>
+            </div>
+          </div>
+        </div>
+      )}
       {showSettings && (
         <SettingsPanel
           activeThemeId={activeThemeId}

@@ -932,7 +932,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
 
   useEffect(() => {
     const onManualSave = () => { persistRef.current(dataRef.current) }
-    const onExportPng  = () => { exportRef.current().catch(() => {}) }
+    const onExportPng  = () => { exportRef.current().catch((e: unknown) => console.error('export failed', e)) }
     window.addEventListener('diary-manual-save', onManualSave)
     window.addEventListener('diary-export-png',  onExportPng)
     return () => {
