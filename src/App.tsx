@@ -197,7 +197,8 @@ export default function App(): JSX.Element {
         onSave={() => window.dispatchEvent(new CustomEvent('diary-manual-save'))}
         onExport={() => window.dispatchEvent(new CustomEvent('diary-export-png'))}
       />
-      <main style={{ flex: 1, overflow: 'hidden' }}>
+      <main style={{ flex: 1, overflow: 'hidden' }}
+        onPointerDown={e => { if (e.altKey) { e.preventDefault(); invoke('window_start_dragging') } }}>
         {nav.viewMode === 'monthly' && (
           <MonthlyView
             currentDate={nav.currentDate}

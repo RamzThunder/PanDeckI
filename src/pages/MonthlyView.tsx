@@ -764,6 +764,9 @@ export default function MonthlyView({ currentDate, onPrev, onNext, onDayClick, o
                 marginBottom: i < 11 ? 7 : 0,
                 pointerEvents: 'all',
                 position: 'relative',
+                borderTop: `1px solid ${isCur ? 'var(--color-primary-dark)' : 'var(--color-primary)'}`,
+                borderRight: `1px solid ${isCur ? 'var(--color-primary-dark)' : 'var(--color-primary)'}`,
+                borderBottom: `1px solid ${isCur ? 'var(--color-primary-dark)' : 'var(--color-primary)'}`,
               }}>
               <button
                 onClick={e => { e.stopPropagation(); onNavigate(new Date(year, i, 1)) }}
