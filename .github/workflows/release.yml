@@ -11,6 +11,8 @@ permissions:
 jobs:
   build-macos:
     runs-on: macos-latest
+    env:
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: 'true'
     outputs:
       tar_name: ${{ steps.info.outputs.tar_name }}
       tar_sig: ${{ steps.info.outputs.tar_sig }}
@@ -76,6 +78,8 @@ jobs:
 
   build-windows:
     runs-on: windows-latest
+    env:
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: 'true'
     outputs:
       win_exe_name: ${{ steps.info.outputs.win_exe_name }}
       win_sig: ${{ steps.info.outputs.win_sig }}
@@ -136,6 +140,8 @@ jobs:
   release:
     needs: [build-macos, build-windows]
     runs-on: ubuntu-latest
+    env:
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: 'true'
     steps:
       - uses: actions/checkout@v4
 
