@@ -61,19 +61,19 @@ interface Props {
 type Imgs = Record<string, HTMLImageElement>
 
 // ── KBO 팀 데이터 ──────────────────────────────────────────────────────────────
-const KBO_TEAMS: Record<string, { label: string; color: string }> = {
-  '삼성 라이온즈': { label: 'SAMSUNG LIONS',  color: '#003DA5' },
-  'KIA 타이거즈':  { label: 'KIA TIGERS',     color: '#EA0029' },
-  'LG 트윈스':     { label: 'LG TWINS',        color: '#C30452' },
-  '두산 베어스':   { label: 'DOOSAN BEARS',    color: '#131230' },
-  'NC 다이노스':   { label: 'NC DINOS',         color: '#071D3A' },
-  '롯데 자이언츠': { label: 'LOTTE GIANTS',   color: '#002B5C' },
-  'SSG 랜더스':    { label: 'SSG LANDERS',     color: '#CE0E2D' },
-  'KT 위즈':       { label: 'KT WIZ',           color: '#1A1A1A' },
-  '한화 이글스':   { label: 'HANWHA EAGLES',  color: '#FF6600' },
-  '키움 히어로즈': { label: 'KIWOOM HEROES',  color: '#820024' },
-  '울산 웨일즈':   { label: 'ULSAN WHALES',    color: '#1B4F8A' },
-  '상무 피닉스':   { label: 'SANGMU PHOENIX', color: '#4A7B3C' },
+const KBO_TEAMS: Record<string, { label: string; color: string; color2: string }> = {
+  '삼성 라이온즈': { label: 'SAMSUNG LIONS',  color: '#074CA1', color2: '#0066B3' },
+  'KIA 타이거즈':  { label: 'KIA TIGERS',     color: '#EA0029', color2: '#06141F' },
+  'LG 트윈스':     { label: 'LG TWINS',        color: '#C00C3F', color2: '#231F20' },
+  '두산 베어스':   { label: 'DOOSAN BEARS',    color: '#1A1748', color2: '#E22531' },
+  'NC 다이노스':   { label: 'NC DINOS',         color: '#315288', color2: '#C7A079' },
+  '롯데 자이언츠': { label: 'LOTTE GIANTS',   color: '#041E42', color2: '#D00E31' },
+  'SSG 랜더스':    { label: 'SSG LANDERS',     color: '#CE0E2D', color2: '#FAC10A' },
+  'KT 위즈':       { label: 'KT WIZ',           color: '#000000', color2: '#EB1D23' },
+  '한화 이글스':   { label: 'HANWHA EAGLES',  color: '#FC4E00', color2: '#07111F' },
+  '키움 히어로즈': { label: 'KIWOOM HEROES',  color: '#570514', color2: '#B07F4B' },
+  '상무 피닉스':   { label: 'SANGMU PHOENIX', color: '#EAB146', color2: '#2C292A' },
+  '울산 웨일즈':   { label: 'ULSAN WHALES',    color: '#C70000', color2: '#060202' },
 }
 
 const WEATHER_REGIONS: Record<string, { lat: number; lng: number }> = {
@@ -91,10 +91,6 @@ const WEATHER_REGIONS: Record<string, { lat: number; lng: number }> = {
   '제주': { lat: 33.4996, lng: 126.5312 },
 }
 
-function darkenHex(hex: string, f = 0.55): string {
-  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16)
-  return `#${[r, g, b].map(v => Math.round(v * f).toString(16).padStart(2, '0')).join('')}`
-}
 
 // ── Canvas helpers ─────────────────────────────────────────────────────────────
 
@@ -216,6 +212,7 @@ function drawBaseball(d: BaseballData, font: string, imgs: Imgs): { dataUrl: str
 
   const team = KBO_TEAMS[d.homeTeam || '삼성 라이온즈'] ?? KBO_TEAMS['삼성 라이온즈']
   const tc = team.color
+  const tc2 = team.color2
 
   // ── 상단 사진 영역 (삐져나감 방지: 1px 인셋 클리핑) ──
   ctx.save()
@@ -228,7 +225,7 @@ function drawBaseball(d: BaseballData, font: string, imgs: Imgs): { dataUrl: str
     drawCoverImg(ctx, imgs.bg, 0, 0, W, PHOTO_H)
   } else {
     const g = ctx.createLinearGradient(0, 0, W, PHOTO_H)
-    g.addColorStop(0, tc); g.addColorStop(1, darkenHex(tc))
+    g.addColorStop(0, tc); g.addColorStop(0.35, tc); g.addColorStop(1, tc2)
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, PHOTO_H)
     ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 18
     for (let i = -PHOTO_H; i < W + PHOTO_H; i += 36) {
@@ -1347,7 +1344,6 @@ function drawQuoteBox(d: QuoteData, font: string): { dataUrl: string; w: number;
   const redLine = '#D9534F'
   const blueLine = '#E2E8F0'
   const ink = '#2C3E50'
-  const muted = '#829AB1'
 
   const tc = measureCtx(`16px ${f}`)
   const quoteLines = wrap(tc, d.text || '문장을 입력하세요', W - pad * 2, 5)

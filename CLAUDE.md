@@ -145,7 +145,7 @@ export interface DailyData {
 - **비디오**: YouTube/Vimeo embed(`videoType: 'embed'`) + 로컬 파일(`videoType: 'local'`). YouTube URL 인식: watch?v=, shorts/, live/, youtu.be/. embed URL: `youtube.com/embed/` 사용 (nocookie 아님)
 - **동영상 툴바**: photo=600px, 그 외(video/card/sticker 등)=410px, text=460px
 - **카드/스크랩**: TemplateModal로 편집하는 구조화된 카드 요소. 세부설정에서 카드별 기본값 설정 가능
-- **야구 티켓 팀 선택**: KBO 12구단 + 울산 웨일즈/상무 피닉스. 팀별 대표색상 자동 적용. `homeTeam` 필드 → KBO_TEAMS 맵
+- **야구 티켓 팀 선택**: KBO 12구단 + 울산 웨일즈/상무 피닉스. 팀별 `color`(메인)·`color2`(그라데이션) 2색 적용. 헤더 배경: 135° 대각선 그라데이션, color1 35% 고정 후 color2로 전환. `homeTeam` 필드 → KBO_TEAMS 맵
 - **스크랩 날씨 지역 지오코딩**: 기초 케어 카드의 날씨 지역을 Open-Meteo geocoding API로 검색 → 저장 형식 `{name, lat, lng, country, admin1}` JSON. 구버전 문자열 키 폴백 지원
 - **회전 스냅**: Shift 누른 채 핸들 회전 시 15° 단위로 스냅
 - **클립보드 붙여넣기**: Cmd+V로 이미지→사진요소, 텍스트→텍스트요소
