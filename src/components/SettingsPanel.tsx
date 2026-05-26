@@ -12,6 +12,7 @@ interface Props {
   onThemeChange: (id: string) => void
   appZoom: number
   onZoomChange: (z: number) => void
+  onZoomCommit: (z: number) => void
   globalFont: string
   onGlobalFontChange: (f: string) => void
   systemFonts: string[]
@@ -196,7 +197,7 @@ const SCRAP_TPL_LIST = [
 
 export default function SettingsPanel({
   activeThemeId, onThemeChange,
-  appZoom, onZoomChange,
+  appZoom, onZoomChange, onZoomCommit,
   globalFont, onGlobalFontChange,
   systemFonts,
   fontScale, onFontScaleChange,
@@ -207,6 +208,8 @@ export default function SettingsPanel({
   onClose,
 }: Props): JSX.Element {
   const [tab, setTab] = useState<Tab>('info')
+  const [localZoom, setLocalZoom] = useState(appZoom)
+  useEffect(() => { setLocalZoom(appZoom) }, [appZoom])
   const [customs, setCustoms] = useState<(Theme | null)[]>(Array(5).fill(null))
   const [editIdx, setEditIdx] = useState<number | null>(null)
   const [draft, setDraft] = useState<Theme>(EMPTY_CUSTOM)
@@ -474,21 +477,22 @@ export default function SettingsPanel({
               <p className="text-xs font-semibold mb-3" style={{ color: 'var(--color-text-muted)' }}>화면 배율</p>
               <div className="flex items-center gap-3">
                 <span className="text-xs shrink-0" style={{ color: 'var(--color-text-muted)' }}>50%</span>
-                <input type="range" min={50} max={150} step={5} value={Math.round(appZoom * 100)}
-                  onChange={e => onZoomChange(Number(e.target.value) / 100)}
+                <input type="range" min={50} max={150} step={5} value={Math.round(localZoom * 100)}
+                  onChange={e => setLocalZoom(Number(e.target.value) / 100)}
+                  onPointerUp={e => { const z = Number((e.target as HTMLInputElement).value) / 100; onZoomChange(z); onZoomCommit(z) }}
                   className="flex-1 cursor-pointer" />
                 <span className="text-xs shrink-0" style={{ color: 'var(--color-text-muted)' }}>150%</span>
               </div>
               <div className="flex items-center justify-between mt-2">
-                <span className="text-sm font-bold" style={{ color: 'var(--color-primary-dark)' }}>{Math.round(appZoom * 100)}%</span>
-                <button onClick={() => onZoomChange(1.0)}
+                <span className="text-sm font-bold" style={{ color: 'var(--color-primary-dark)' }}>{Math.round(localZoom * 100)}%</span>
+                <button onClick={() => { setLocalZoom(1.0); onZoomChange(1.0); onZoomCommit(1.0) }}
                   className="text-xs px-3 py-1 rounded-full hover:opacity-80"
                   style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>
                   초기화 (100%)
                 </button>
               </div>
               <p className="text-xs mt-3" style={{ color: 'var(--color-text-muted)' }}>
-                Cmd + 스크롤로도 조절할 수 있어요.
+                Cmd / Ctrl + 스크롤로도 조절할 수 있어요.
               </p>
             </section>
 

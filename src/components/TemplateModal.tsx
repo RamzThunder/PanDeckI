@@ -2325,7 +2325,7 @@ function WishlistForm({ d, u }: { d: WishlistData; u: (p: Partial<WishlistData>)
     </Row>
     <StarRating label="위시 점수 / 구매 만족도" value={d.wishScore} onChange={v => u({ wishScore: v })} />
     <F label="한줄평 (선택)" value={d.oneiner} onChange={v => u({ oneiner: v })} placeholder="고민은 배송을 늦출 뿐" />
-    <F label="링크 (선택, Cmd+클릭으로 열기)" value={d.link} onChange={v => u({ link: v })} placeholder="https://..." />
+    <F label="링크 (선택, Cmd/Ctrl+클릭으로 열기)" value={d.link} onChange={v => u({ link: v })} placeholder="https://..." />
   </>
 }
 
@@ -2389,7 +2389,7 @@ function CheckinForm({ d, u }: { d: CheckinData; u: (p: Partial<CheckinData>) =>
         style={{ width: '100%', accentColor: 'var(--color-primary)', cursor: 'pointer' }} />
     </div>
     <F label="한줄 인상 (선택)" value={d.memo} onChange={v => u({ memo: v })} placeholder="또 오고 싶다!" />
-    <F label="링크 (선택, Cmd+클릭으로 열기)" value={d.link} onChange={v => u({ link: v })} placeholder="https://maps.app.goo.gl/..." />
+    <F label="링크 (선택, Cmd/Ctrl+클릭으로 열기)" value={d.link} onChange={v => u({ link: v })} placeholder="https://maps.app.goo.gl/..." />
   </>
 }
 

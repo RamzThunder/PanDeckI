@@ -141,6 +141,9 @@ export default function App(): JSX.Element {
   const handleZoomChange = (z: number) => {
     setAppZoom(z)
     api.settings.set('appZoom', z.toString()).catch(() => {})
+  }
+
+  const handleZoomCommit = (z: number) => {
     resizeWindow(z)
   }
 
@@ -274,6 +277,7 @@ export default function App(): JSX.Element {
           onThemeChange={handleThemeChange}
           appZoom={appZoom}
           onZoomChange={handleZoomChange}
+          onZoomCommit={handleZoomCommit}
           globalFont={globalFont}
           onGlobalFontChange={handleGlobalFontChange}
           fontScale={fontScale}
