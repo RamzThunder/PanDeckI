@@ -149,15 +149,13 @@ jobs:
           git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git .
           git checkout ${{ github.ref_name }}
 
-      - uses: actions/download-artifact@v4
-        with:
-          name: macos-artifacts
-          path: artifacts/macos
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: windows-artifacts
-          path: artifacts/windows
+      - name: Download artifacts
+        run: |
+          mkdir -p artifacts/macos artifacts/windows
+          gh run download ${{ github.run_id }} -n macos-artifacts -D artifacts/macos
+          gh run download ${{ github.run_id }} -n windows-artifacts -D artifacts/windows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create release and upload
         env:
