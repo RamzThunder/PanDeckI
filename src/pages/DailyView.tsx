@@ -552,7 +552,7 @@ function InteractiveOverlay({ url, cmdHeld }: { url: string; cmdHeld: boolean })
         pointerEvents: cmdHeld ? 'auto' : 'none',
         cursor: 'pointer',
       }}
-      onClick={e => { if (e.metaKey) { e.stopPropagation(); api.shell.openUrl(url) } }}
+      onClick={e => { if (e.metaKey || e.ctrlKey) { e.stopPropagation(); api.shell.openUrl(url) } }}
     />
   )
 }
@@ -1325,7 +1325,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
 
   const startMarquee = (e: React.PointerEvent) => {
     if (e.button !== 0) return
-    if (e.metaKey) return
+    if (e.metaKey || e.ctrlKey) return
     setSelectedId(null)
     setMultiIds([])
     setShowStickers(false)
@@ -1492,7 +1492,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
   return (
     <div className="flex flex-col h-full select-none" style={canvasBgStyle}
       onClick={e => {
-        if (e.metaKey) return
+        if (e.metaKey || e.ctrlKey) return
         if (justMarqueedRef.current) { justMarqueedRef.current = false; return }
         setSelectedId(null); setMultiIds([]); setEditingId(null); setShowStickers(false); setShowFontList(false); setShowFontSizeList(false); setShowVideoMenu(false); setShowGhostMenu(false)
       }}>
@@ -1765,7 +1765,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                 outlineOffset: 2,
                 cursor: isEdit ? 'default' : el.locked ? 'default' : 'move',
               }}
-              onPointerDown={e => { if (!isEdit && !e.metaKey) startDrag(e, el.id) }}
+              onPointerDown={e => { if (!isEdit && !e.metaKey && !e.ctrlKey) startDrag(e, el.id) }}
               onDoubleClick={e => {
                 e.stopPropagation()
                 if (el.type === 'text') {

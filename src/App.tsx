@@ -96,7 +96,7 @@ export default function App(): JSX.Element {
   // Scroll wheel on any range slider adjusts it
   useEffect(() => {
     const onWheel = (e: WheelEvent) => {
-      if (e.metaKey) return
+      if (e.metaKey || e.ctrlKey) return
       const target = e.target as HTMLElement
       if (!(target instanceof HTMLInputElement) || target.type !== 'range') return
       e.preventDefault()
@@ -118,7 +118,7 @@ export default function App(): JSX.Element {
   // Cmd+scroll zoom
   useEffect(() => {
     const onWheel = (e: WheelEvent) => {
-      if (!e.metaKey) return
+      if (!e.metaKey && !e.ctrlKey) return
       e.preventDefault()
       const delta = e.deltaY > 0 ? -0.05 : 0.05
       setAppZoom(prev => {

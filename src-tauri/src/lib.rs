@@ -102,9 +102,9 @@ pub fn run() {
                 .transparent(true)
                 .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15");
 
-            // Windows: 시작 시 최대화 + DWM 그림자/경계선 제거
+            // Windows: 시작 시 최대화, DWM 그림자 활성화 (macOS처럼 창 부유감)
             #[cfg(target_os = "windows")]
-            let builder = builder.maximized(true).shadow(false);
+            let builder = builder.maximized(true).shadow(true);
 
             builder.build()?;
 
