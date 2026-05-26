@@ -128,8 +128,8 @@ export interface DailyData {
 - **뒤집기**: 좌우(flipH)/상하(flipV) 반전
 - **링크**: 요소에 URL 첨부 → 더블클릭 시 브라우저로 열기
 - **텍스트**: 폰트/크기/색상/굵기/기울임/밑줄/취소선/자간/줄간격/가로정렬/세로정렬/배경색(불투명도)/테두리/모서리. 툴바 4행 구조: 글꼴조정|문장조정|텍스트박스조정|전체공통
-- **시스템 폰트**: macOS=NSFontManager(Python 경유), Windows=PowerShell+InstalledFontCollection, 검색 가능
-- **전체 폰트**: 설정 패널에서 앱 전체 폰트 변경 (`applyGlobalFont`)
+- **시스템 폰트**: macOS=NSFontManager(Python 경유), Windows=PowerShell+PresentationCore(DirectWrite) — 한글 포함 전체 폰트 열거, 검색 가능
+- **전체 폰트**: 설정 패널에서 앱 전체 폰트 변경 (`applyGlobalFont`). 최근 사용 폰트 5개 상단 고정 (`recentFonts` settings 키)
 - **PNG 스티커팩**: `sticker/` 폴더 내 하위 폴더 = 팩, 자동 감지
 - **사진 크롭**: 고정 프레임 + 이미지 이동/줌, Canvas API로 최종 렌더
 - **사진 자유형 크롭**: 드래그로 영역 선택 → 해당 영역만 추출
@@ -144,7 +144,9 @@ export interface DailyData {
 - **유령 모드 blur 내보내기**: WKWebView에서 `ctx.filter` 미작동 → 3-pass box blur (JS 픽셀 처리) + 코사인 소프트 마스크 페더링으로 구현 (`applyBlurExport`, `boxBlurH`, `boxBlurV` in DailyView.tsx)
 - **비디오**: YouTube/Vimeo embed(`videoType: 'embed'`) + 로컬 파일(`videoType: 'local'`). YouTube URL 인식: watch?v=, shorts/, live/, youtu.be/. embed URL: `youtube.com/embed/` 사용 (nocookie 아님)
 - **동영상 툴바**: photo=600px, 그 외(video/card/sticker 등)=410px, text=460px
-- **카드/스크랩**: TemplateModal로 편집하는 구조화된 카드 요소
+- **카드/스크랩**: TemplateModal로 편집하는 구조화된 카드 요소. 세부설정에서 카드별 기본값 설정 가능
+- **야구 티켓 팀 선택**: KBO 12구단 + 울산 웨일즈/상무 피닉스. 팀별 대표색상 자동 적용. `homeTeam` 필드 → KBO_TEAMS 맵
+- **스크랩 날씨 지역 지오코딩**: 기초 케어 카드의 날씨 지역을 Open-Meteo geocoding API로 검색 → 저장 형식 `{name, lat, lng, country, admin1}` JSON. 구버전 문자열 키 폴백 지원
 - **회전 스냅**: Shift 누른 채 핸들 회전 시 15° 단위로 스냅
 - **클립보드 붙여넣기**: Cmd+V로 이미지→사진요소, 텍스트→텍스트요소
 - **테마**: 4 프리셋(하늘색·딸기핑크·흑백·다크, 기본=하늘색) + 5 커스텀 슬롯(삭제 가능), CSS 변수 기반 (`--color-primary` 등)
@@ -163,8 +165,9 @@ export interface DailyData {
 
 ## SettingsPanel 구조 (우측 패널)
 - **정보 탭**: 소프트웨어 버전 표시(`getVersion()`) + 수동 업데이트 버튼(`check()` → ask → downloadAndInstall → relaunch) + 다이어리 이름 + 백업 내보내기/불러오기 + DB 저장 위치
-- **화면 탭**: 줌 슬라이더 (50~150%) + 전체 폰트 선택 + 폰트 크기/오프셋 + 유령 모드 강도 슬라이더 (모자이크/블러) + 초기화 버튼
-- **세부설정 탭**: 스크랩 기본값 편집
+- **화면 탭**: 줌 슬라이더 (50~150%) + 전체 폰트 선택(최근 사용 5개 상단 고정) + 폰트 크기/오프셋 + 유령 모드 강도 슬라이더 (모자이크/블러) + 초기화 버튼
+- **세부설정 탭**: 유령 모드 효과 강도 + 스크랩 옵션 기본값 편집 (ScrapFieldType: text|select|boolean|color|number|geocode)
+  - `geocode` 타입: 도시 검색 입력 → Open-Meteo geocoding API 조회 → 결과 선택 → JSON 저장
 
 ## CropModal 동작 방식
 - **일반 모드**: 고정 프레임 (frameW × frameH), 이미지 이동/스크롤 줌
@@ -211,7 +214,8 @@ api.backup     export(), import()
 | `ghostBlurIntensity` | float string | 유령 블러 강도 |
 | `ghostMosaicIntensity` | float string | 유령 모자이크 강도 |
 | `diaryName` | string | 다이어리 이름 (내보내기 파일명에 사용) |
-| `scrap_defaults` | JSON | 스크랩 카드 기본값 |
+| `scrap_defaults` | JSON | 스크랩 카드 기본값. skincare.weatherRegion은 `{name,lat,lng,country,admin1}` JSON 문자열 |
+| `recentFonts` | JSON (string[5]) | 최근 선택한 폰트 (폰트 드롭다운 상단 고정) |
 
 ## Rust 커맨드 목록
 ```

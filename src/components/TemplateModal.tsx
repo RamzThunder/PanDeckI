@@ -2615,10 +2615,19 @@ function SkincareForm({ d, u }: { d: SkincareData; u: (p: Partial<SkincareData>)
         const raw = await api.settings.get('scrap_defaults')
         if (raw) {
           const region = JSON.parse(raw)?.skincare?.weatherRegion
-          if (region && WEATHER_REGIONS[region]) {
-            lat = WEATHER_REGIONS[region].lat
-            lng = WEATHER_REGIONS[region].lng
-            regionName = region
+          if (region) {
+            try {
+              // New format: JSON string with {name, lat, lng, country, admin1}
+              const geo = JSON.parse(region)
+              if (geo.lat != null && geo.lng != null) {
+                lat = geo.lat; lng = geo.lng; regionName = geo.name ?? region
+              }
+            } catch {
+              // Old format: string key into WEATHER_REGIONS
+              if (WEATHER_REGIONS[region]) {
+                lat = WEATHER_REGIONS[region].lat; lng = WEATHER_REGIONS[region].lng; regionName = region
+              }
+            }
           }
         }
       } catch {}

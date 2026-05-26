@@ -52,7 +52,7 @@ const COLOR_FIELDS: { key: keyof Theme; label: string }[] = [
 
 type Tab = 'info' | 'display' | 'detail'
 
-type ScrapFieldType = 'text' | 'select' | 'boolean' | 'color' | 'number'
+type ScrapFieldType = 'text' | 'select' | 'boolean' | 'color' | 'number' | 'geocode'
 interface ScrapField { key: string; label: string; type?: ScrapFieldType; options?: string[] }
 
 const SCRAP_TPL_FIELDS: Record<string, ScrapField[]> = {
@@ -152,7 +152,7 @@ const SCRAP_TPL_FIELDS: Record<string, ScrapField[]> = {
     { key: 'rating',            label: '만족도 (1~5)', type: 'number' },
   ],
   skincare: [
-    { key: 'weatherRegion', label: '날씨 지역', type: 'select', options: ['서울', '부산', '대구', '인천', '광주', '대전', '울산', '수원', '창원', '전주', '청주', '제주'] },
+    { key: 'weatherRegion', label: '날씨 지역', type: 'geocode' },
     { key: 'time',      label: 'AM / PM', type: 'select', options: ['AM', 'PM'] },
     { key: 'condition', label: '피부 컨디션' },
     { key: 'weather',   label: '날씨' },
@@ -207,6 +207,10 @@ export default function SettingsPanel({
   const [appVersion, setAppVersion] = useState('')
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [updateMsg, setUpdateMsg] = useState('')
+  const [recentFonts, setRecentFonts] = useState<string[]>([])
+  const [geoQuery, setGeoQuery] = useState('')
+  const [geoResults, setGeoResults] = useState<Array<{ name: string; lat: number; lng: number; country: string; admin1?: string }>>([])
+  const [geoSearching, setGeoSearching] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -219,6 +223,9 @@ export default function SettingsPanel({
 
       const rawRecent = await api.settings.get('themeRecentColors').catch(() => null)
       if (rawRecent) try { setRecentColors(JSON.parse(rawRecent)) } catch {}
+
+      const rawRecentFonts = await api.settings.get('recentFonts').catch(() => null)
+      if (rawRecentFonts) try { setRecentFonts(JSON.parse(rawRecentFonts)) } catch {}
 
       const rawScrap = await api.settings.get('scrap_defaults').catch(() => null)
       if (rawScrap) try { setAllDefaults(JSON.parse(rawScrap)) } catch {}
@@ -295,6 +302,18 @@ export default function SettingsPanel({
     api.settings.set('themeRecentColors', JSON.stringify(updated)).catch(() => {})
     selectTheme(await saveCustom(editIdx, draft))
     setEditIdx(null)
+  }
+
+  const searchGeo = async (q: string) => {
+    if (!q.trim()) { setGeoResults([]); return }
+    setGeoSearching(true)
+    try {
+      const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q.trim())}&count=5&language=ko`
+      const raw = await api.http.fetchText(url)
+      const json = JSON.parse(raw) as { results?: Array<{ name: string; latitude: number; longitude: number; country: string; admin1?: string }> }
+      setGeoResults((json.results ?? []).map(r => ({ name: r.name, lat: r.latitude, lng: r.longitude, country: r.country, admin1: r.admin1 })))
+    } catch { setGeoResults([]) }
+    setGeoSearching(false)
   }
 
   const filteredFonts = fontSearch
@@ -475,9 +494,28 @@ export default function SettingsPanel({
                         style={{ color: 'var(--color-text-muted)' }}>
                         시스템 기본 폰트 (초기화)
                       </button>
+                      {!fontSearch && recentFonts.length > 0 && (<>
+                        <div className="px-3 py-1 text-xs" style={{ color: 'var(--color-text-muted)', background: 'var(--color-primary-light)', borderTop: '1px solid var(--color-border)', borderBottom: '1px solid var(--color-border)' }}>최근 사용</div>
+                        {recentFonts.map(f => (
+                          <button key={`recent-${f}`}
+                            onClick={() => { onGlobalFontChange(f); setShowFontList(false); setFontSearch(''); applyGlobalFont(f) }}
+                            className="w-full text-left text-xs px-3 py-1.5 hover:bg-pink-50 truncate"
+                            style={{ fontFamily: `'${f}'`, background: globalFont === f ? 'var(--color-primary-light)' : undefined, color: 'var(--color-text)' }}>
+                            {f}
+                          </button>
+                        ))}
+                        <div style={{ borderTop: '1px solid var(--color-border)' }} />
+                      </>)}
                       {filteredFonts.map(f => (
                         <button key={f}
-                          onClick={() => { onGlobalFontChange(f); setShowFontList(false); setFontSearch(''); applyGlobalFont(f) }}
+                          onClick={() => {
+                            onGlobalFontChange(f); setShowFontList(false); setFontSearch(''); applyGlobalFont(f)
+                            setRecentFonts(prev => {
+                              const next = [f, ...prev.filter(x => x !== f)].slice(0, 5)
+                              api.settings.set('recentFonts', JSON.stringify(next)).catch(() => {})
+                              return next
+                            })
+                          }}
                           className="w-full text-left text-xs px-3 py-1.5 hover:bg-pink-50 truncate"
                           style={{ fontFamily: `'${f}'`, background: globalFont === f ? 'var(--color-primary-light)' : undefined, color: 'var(--color-text)' }}>
                           {f}
@@ -695,6 +733,44 @@ export default function SettingsPanel({
                               onChange={e => setVal(e.target.value)}
                               className="w-full text-xs px-2 py-1.5 rounded-lg outline-none"
                               style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }} />
+                          ) : type === 'geocode' ? (
+                            <div>
+                              {val && (() => {
+                                try {
+                                  const g = JSON.parse(val)
+                                  return <p className="text-xs mb-1.5 font-medium" style={{ color: 'var(--color-text)' }}>{g.name}{g.admin1 ? `, ${g.admin1}` : ''} <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>({g.country})</span></p>
+                                } catch { return <p className="text-xs mb-1.5" style={{ color: 'var(--color-text)' }}>{val}</p> }
+                              })()}
+                              <div className="flex gap-1 mb-1">
+                                <input
+                                  type="text"
+                                  value={geoQuery}
+                                  onChange={e => setGeoQuery(e.target.value)}
+                                  onKeyDown={e => { if (e.key === 'Enter') searchGeo(geoQuery) }}
+                                  placeholder="도시 이름으로 검색"
+                                  className="flex-1 text-xs px-2 py-1.5 rounded-lg outline-none"
+                                  style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }} />
+                                <button
+                                  onClick={() => searchGeo(geoQuery)}
+                                  disabled={geoSearching}
+                                  className="text-xs px-2 py-1.5 rounded-lg"
+                                  style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)', cursor: geoSearching ? 'default' : 'pointer', opacity: geoSearching ? 0.6 : 1 }}>
+                                  {geoSearching ? '…' : '검색'}
+                                </button>
+                              </div>
+                              {geoResults.length > 0 && (
+                                <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--color-border)' }}>
+                                  {geoResults.map((r, i) => (
+                                    <button key={i}
+                                      onClick={() => { setVal(JSON.stringify({ name: r.name, lat: r.lat, lng: r.lng, country: r.country, admin1: r.admin1 })); setGeoResults([]); setGeoQuery('') }}
+                                      className="w-full text-left text-xs px-2 py-1.5 hover:bg-pink-50"
+                                      style={{ borderBottom: i < geoResults.length - 1 ? '1px solid var(--color-border)' : 'none', color: 'var(--color-text)', background: 'white', display: 'block' }}>
+                                      {r.name}{r.admin1 ? `, ${r.admin1}` : ''} <span style={{ color: 'var(--color-text-muted)' }}>{r.country}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           ) : (
                             <input
                               type="text"
