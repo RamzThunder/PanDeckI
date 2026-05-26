@@ -11,13 +11,14 @@ permissions:
 jobs:
   build-macos:
     runs-on: macos-latest
-    env:
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: 'true'
     outputs:
       tar_name: ${{ steps.info.outputs.tar_name }}
       tar_sig: ${{ steps.info.outputs.tar_sig }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        run: |
+          git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git .
+          git checkout ${{ github.ref_name }}
 
       - uses: actions/setup-node@v4
         with:
@@ -78,13 +79,15 @@ jobs:
 
   build-windows:
     runs-on: windows-latest
-    env:
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: 'true'
     outputs:
       win_exe_name: ${{ steps.info.outputs.win_exe_name }}
       win_sig: ${{ steps.info.outputs.win_sig }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        shell: bash
+        run: |
+          git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git .
+          git checkout ${{ github.ref_name }}
 
       - uses: actions/setup-node@v4
         with:
@@ -140,10 +143,11 @@ jobs:
   release:
     needs: [build-macos, build-windows]
     runs-on: ubuntu-latest
-    env:
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: 'true'
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        run: |
+          git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git .
+          git checkout ${{ github.ref_name }}
 
       - uses: actions/download-artifact@v4
         with:
