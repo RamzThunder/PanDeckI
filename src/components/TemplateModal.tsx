@@ -10,7 +10,7 @@ const CropCtx = React.createContext<((src: string, frame: { w: number; h: number
 type Category = 'hobby' | 'spend' | 'travel' | 'food' | 'archive' | 'style'
 type TemplateId = 'baseball' | 'ticket' | 'game' | 'receipt' | 'wishlist' | 'transport' | 'checkin' | 'coffee' | 'food_note' | 'youtube' | 'quote' | 'music' | 'makeup' | 'skincare'
 
-interface BaseballData { bgImageB64: string; away: string; homeScore: string; awayScore: string; venue: string; date: string; seat: string; memo: string; isAway: boolean }
+interface BaseballData { bgImageB64: string; away: string; homeScore: string; awayScore: string; venue: string; date: string; seat: string; memo: string; isAway: boolean; homeTeam?: string }
 interface TicketData { category: '영화' | '공연' | '전시' | '기타'; title: string; date: string; time: string; venue: string; seat: string; price: string; photoB64: string }
 interface GameData { screenshotB64: string; title: string; date: string; oneiner: string; frameColor: string; frameBgB64: string }
 interface ReceiptItem { name: string; price: string }
@@ -36,6 +36,42 @@ interface Props {
 }
 
 type Imgs = Record<string, HTMLImageElement>
+
+// ── KBO 팀 데이터 ──────────────────────────────────────────────────────────────
+const KBO_TEAMS: Record<string, { label: string; color: string }> = {
+  '삼성 라이온즈': { label: 'SAMSUNG LIONS',  color: '#003DA5' },
+  'KIA 타이거즈':  { label: 'KIA TIGERS',     color: '#EA0029' },
+  'LG 트윈스':     { label: 'LG TWINS',        color: '#C30452' },
+  '두산 베어스':   { label: 'DOOSAN BEARS',    color: '#131230' },
+  'NC 다이노스':   { label: 'NC DINOS',         color: '#071D3A' },
+  '롯데 자이언츠': { label: 'LOTTE GIANTS',   color: '#002B5C' },
+  'SSG 랜더스':    { label: 'SSG LANDERS',     color: '#CE0E2D' },
+  'KT 위즈':       { label: 'KT WIZ',           color: '#1A1A1A' },
+  '한화 이글스':   { label: 'HANWHA EAGLES',  color: '#FF6600' },
+  '키움 히어로즈': { label: 'KIWOOM HEROES',  color: '#820024' },
+  '울산 웨일즈':   { label: 'ULSAN WHALES',    color: '#1B4F8A' },
+  '상무 피닉스':   { label: 'SANGMU PHOENIX', color: '#4A7B3C' },
+}
+
+const WEATHER_REGIONS: Record<string, { lat: number; lng: number }> = {
+  '서울': { lat: 37.5665, lng: 126.9780 },
+  '부산': { lat: 35.1796, lng: 129.0756 },
+  '대구': { lat: 35.8714, lng: 128.6014 },
+  '인천': { lat: 37.4563, lng: 126.7052 },
+  '광주': { lat: 35.1595, lng: 126.8526 },
+  '대전': { lat: 36.3504, lng: 127.3845 },
+  '울산': { lat: 35.5384, lng: 129.3114 },
+  '수원': { lat: 37.2636, lng: 127.0286 },
+  '창원': { lat: 35.2280, lng: 128.6811 },
+  '전주': { lat: 35.8242, lng: 127.1480 },
+  '청주': { lat: 36.6424, lng: 127.4890 },
+  '제주': { lat: 33.4996, lng: 126.5312 },
+}
+
+function darkenHex(hex: string, f = 0.55): string {
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16)
+  return `#${[r, g, b].map(v => Math.round(v * f).toString(16).padStart(2, '0')).join('')}`
+}
 
 // ── Canvas helpers ─────────────────────────────────────────────────────────────
 
@@ -155,6 +191,9 @@ function drawBaseball(d: BaseballData, font: string, imgs: Imgs): { dataUrl: str
   const PHOTO_H = 282
   const STUB_Y  = 414
 
+  const team = KBO_TEAMS[d.homeTeam || '삼성 라이온즈'] ?? KBO_TEAMS['삼성 라이온즈']
+  const tc = team.color
+
   // ── 상단 사진 영역 (삐져나감 방지: 1px 인셋 클리핑) ──
   ctx.save()
   ctx.beginPath()
@@ -166,7 +205,7 @@ function drawBaseball(d: BaseballData, font: string, imgs: Imgs): { dataUrl: str
     drawCoverImg(ctx, imgs.bg, 0, 0, W, PHOTO_H)
   } else {
     const g = ctx.createLinearGradient(0, 0, W, PHOTO_H)
-    g.addColorStop(0, '#003DA5'); g.addColorStop(1, '#001870')
+    g.addColorStop(0, tc); g.addColorStop(1, darkenHex(tc))
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, PHOTO_H)
     ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 18
     for (let i = -PHOTO_H; i < W + PHOTO_H; i += 36) {
@@ -180,7 +219,7 @@ function drawBaseball(d: BaseballData, font: string, imgs: Imgs): { dataUrl: str
 
   ctx.fillStyle = 'rgba(255,255,255,0.80)'; ctx.font = `8px ${f}`
   ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-  ctx.fillText('SAMSUNG LIONS', pad, 10)
+  ctx.fillText(team.label, pad, 10)
 
   // ── 상대팀 표시 (사진 우측 하단 정렬) ──
   ctx.fillStyle = '#fff'; ctx.font = `bold 18px ${f}`
@@ -195,7 +234,7 @@ function drawBaseball(d: BaseballData, font: string, imgs: Imgs): { dataUrl: str
   const midY2   = PHOTO_H + (STUB_Y - PHOTO_H) * 3 / 4
   const centerY = PHOTO_H + (STUB_Y - PHOTO_H) / 2
 
-  ctx.fillStyle = '#003DA5'; ctx.font = `bold 12px ${f}`
+  ctx.fillStyle = tc; ctx.font = `bold 12px ${f}`
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
   ctx.fillText(d.date || '', W / 2, midY1 - 18)
 
@@ -208,14 +247,14 @@ function drawBaseball(d: BaseballData, font: string, imgs: Imgs): { dataUrl: str
   ctx.fillText(':', W / 2, midY1 + 10)
 
   if (d.isAway) {
-    ctx.font = `bold 34px ${f}`; ctx.fillStyle = '#003DA5'
+    ctx.font = `bold 34px ${f}`; ctx.fillStyle = tc
     ctx.textAlign = 'right'; ctx.fillText(leftScore, W / 2 - 12, midY1 + 10)
     ctx.font = `bold 28px ${f}`; ctx.fillStyle = '#aaa'
     ctx.textAlign = 'left';  ctx.fillText(rightScore, W / 2 + 12, midY1 + 10)
   } else {
     ctx.font = `bold 28px ${f}`; ctx.fillStyle = '#aaa'
     ctx.textAlign = 'right'; ctx.fillText(leftScore, W / 2 - 12, midY1 + 10)
-    ctx.font = `bold 34px ${f}`; ctx.fillStyle = '#003DA5'
+    ctx.font = `bold 34px ${f}`; ctx.fillStyle = tc
     ctx.textAlign = 'left';  ctx.fillText(rightScore, W / 2 + 12, midY1 + 10)
   }
 
@@ -226,7 +265,7 @@ function drawBaseball(d: BaseballData, font: string, imgs: Imgs): { dataUrl: str
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
   ctx.fillText(d.venue || '경기장', W / 2, midY2 - 14)
 
-  ctx.fillStyle = '#003DA5'; ctx.font = `bold 15px ${f}`
+  ctx.fillStyle = tc; ctx.font = `bold 15px ${f}`
   ctx.fillText(d.seat ? d.seat : '—', W / 2, midY2 + 8)
 
   // ── 절취선 ──
@@ -245,9 +284,9 @@ function drawBaseball(d: BaseballData, font: string, imgs: Imgs): { dataUrl: str
   ctx.lineTo(0, STUB_Y); ctx.closePath(); ctx.fill()
 
   const sy = STUB_Y + 8
-  ctx.fillStyle = '#003DA5'; ctx.font = `bold 14px ${f}`
+  ctx.fillStyle = tc; ctx.font = `bold 14px ${f}`
   ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-  ctx.fillText('SAMSUNG LIONS', W / 2, sy)
+  ctx.fillText(team.label, W / 2, sy)
   ctx.fillStyle = '#aaa'; ctx.font = `9px ${f}`
   ctx.fillText(`vs  ${(d.away || '상대팀').toUpperCase()}`, W / 2, sy + 18)
 
@@ -1623,7 +1662,7 @@ function defaultData(id: TemplateId, tplDef: Record<string, string> = {}): AnyDa
   const d = new Date()
   const today = `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`
   const base = (() => { switch (id) {
-    case 'baseball':  return { bgImageB64: '', away: '', homeScore: '', awayScore: '', venue: '', date: today, seat: '', memo: '', isAway: false }
+    case 'baseball':  return { bgImageB64: '', away: '', homeScore: '', awayScore: '', venue: '', date: today, seat: '', memo: '', isAway: false, homeTeam: '삼성 라이온즈' }
     case 'ticket':    return { category: '영화', title: '', date: today, time: '', venue: '', seat: '', price: '', photoB64: '' }
     case 'game':      return { screenshotB64: '', title: '', date: today, oneiner: '', frameColor: '#f9f8f6', frameBgB64: '' }
     case 'receipt':   return { store: '', date: today, items: [{ name: '', price: '' }], footer: '감사합니다 ✦' }
@@ -2072,26 +2111,26 @@ function BaseballForm({ d, u }: { d: BaseballData; u: (p: Partial<BaseballData>)
           flex: 1, padding: '6px 0', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 12,
           background: !d.isAway ? 'var(--color-primary)' : '#F0F0F0',
           color: !d.isAway ? '#fff' : '#555', fontWeight: !d.isAway ? 700 : 400
-        }}>🏠 홈 경기 (오른쪽 파란색)</button>
+        }}>홈 경기</button>
         <button onClick={() => u({ isAway: true })} style={{
           flex: 1, padding: '6px 0', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 12,
           background: d.isAway ? 'var(--color-primary)' : '#F0F0F0',
           color: d.isAway ? '#fff' : '#555', fontWeight: d.isAway ? 700 : 400
-        }}>✈️ 원정 경기 (왼쪽 파란색)</button>
+        }}>원정 경기</button>
       </div>
     </div>
 
-    <F label="상대팀" value={d.away} onChange={v => u({ away: v })} placeholder="KIA 타이거즈" />
+    <F label="상대팀" value={d.away} onChange={v => u({ away: v })} placeholder="상대팀" />
     <Row>
-      <F label="원정팀 스코어 (좌)" value={d.awayScore} onChange={v => u({ awayScore: v })} placeholder="0" />
-      <F label="홈팀 스코어 (우)" value={d.homeScore} onChange={v => u({ homeScore: v })} placeholder="0" />
+      <F label="원정팀 스코어" value={d.awayScore} onChange={v => u({ awayScore: v })} placeholder="0" />
+      <F label="홈팀 스코어" value={d.homeScore} onChange={v => u({ homeScore: v })} placeholder="0" />
     </Row>
     <Row>
       <F label="경기장" value={d.venue} onChange={v => u({ venue: v })} placeholder="라이온즈파크" />
-      <F label="날짜" value={d.date} onChange={v => u({ date: v })} placeholder="2025.05.20" />
+      <F label="날짜" value={d.date} onChange={v => u({ date: v })} placeholder="2026.05.26" />
     </Row>
-    <F label="구역 / 좌석" value={d.seat} onChange={v => u({ seat: v })} placeholder="3E-1 1열 8번" />
-    <F label="오늘 경기 한줄평 (선택)" value={d.memo} onChange={v => u({ memo: v })} placeholder="홈런 2개 ㄷㄷ" />
+    <F label="구역 / 좌석" value={d.seat} onChange={v => u({ seat: v })} placeholder="블루존 3-3 n열 n번" />
+    <F label="오늘 경기 한줄평 (선택)" value={d.memo} onChange={v => u({ memo: v })} placeholder="지금 본게 프로야구야?" />
   </>
 }
 
@@ -2113,7 +2152,7 @@ function TicketForm({ d, u }: { d: TicketData; u: (p: Partial<TicketData>) => vo
     </div>
     <F label="제목" value={d.title} onChange={v => u({ title: v })} placeholder="영화제목" />
     <Row>
-      <F label="날짜" value={d.date} onChange={v => u({ date: v })} placeholder="2025.05.20" />
+      <F label="날짜" value={d.date} onChange={v => u({ date: v })} placeholder="2025.05.26" />
       <F label="시간" value={d.time} onChange={v => u({ time: v })} placeholder="00:00" />
     </Row>
     {hasSeat ? (
@@ -2124,7 +2163,7 @@ function TicketForm({ d, u }: { d: TicketData; u: (p: Partial<TicketData>) => vo
     ) : (
       <F label="장소" value={d.venue} onChange={v => u({ venue: v })} placeholder="장소" />
     )}
-    <F label="가격 (선택)" value={d.price} onChange={v => u({ price: v })} placeholder="₩12,000" />
+    <F label="가격 (선택)" value={d.price} onChange={v => u({ price: v })} placeholder="12000" />
   </>
 }
 
@@ -2178,7 +2217,7 @@ function GameForm({ d, u }: { d: GameData; u: (p: Partial<GameData>) => void }) 
 
     <ImgPicker label="틀 배경 이미지 (선택)" value={d.frameBgB64} onChange={v => u({ frameBgB64: v })} />
     <F label="게임 타이틀" value={d.title} onChange={v => u({ title: v })} placeholder="친구모아 아일랜드" />
-    <F label="날짜" value={d.date} onChange={v => u({ date: v })} placeholder="2025.05.20" />
+    <F label="날짜" value={d.date} onChange={v => u({ date: v })} placeholder="2026.05.26" />
     <F label="오늘의 한마디" value={d.oneiner} onChange={v => u({ oneiner: v })} placeholder="오늘 해낸 것" />
   </>
 }
@@ -2189,7 +2228,7 @@ function ReceiptForm({ d, u }: { d: ReceiptData; u: (p: Partial<ReceiptData>) =>
   return <>
     <Row>
       <F label="가게 이름" value={d.store} onChange={v => u({ store: v })} placeholder="집" />
-      <F label="날짜" value={d.date} onChange={v => u({ date: v })} placeholder="2025.05.20" />
+      <F label="날짜" value={d.date} onChange={v => u({ date: v })} placeholder="2026.05.26" />
     </Row>
     <div style={{ marginBottom: 8 }}>
       <div style={lbl}>항목</div>
@@ -2213,13 +2252,13 @@ function ReceiptForm({ d, u }: { d: ReceiptData; u: (p: Partial<ReceiptData>) =>
 function WishlistForm({ d, u }: { d: WishlistData; u: (p: Partial<WishlistData>) => void }) {
   return <>
     <ImgPicker label="제품 사진 (선택)" value={d.photoB64} onChange={v => u({ photoB64: v })} cropFrame={{ w: 260, h: 140 }} />
-    <F label="아이템 이름" value={d.item} onChange={v => u({ item: v })} placeholder="에어팟 프로 2세대" />
+    <F label="아이템 이름" value={d.item} onChange={v => u({ item: v })} placeholder="닌텐도 스위치 2세대" />
     <Row>
-      <F label="가격" value={d.price} onChange={v => u({ price: v })} placeholder="₩329,000" />
-      <F label="날짜" value={d.date} onChange={v => u({ date: v })} placeholder="2025.05.20" />
+      <F label="가격" value={d.price} onChange={v => u({ price: v })} placeholder="750000" />
+      <F label="날짜" value={d.date} onChange={v => u({ date: v })} placeholder="2026.05.26" />
     </Row>
     <StarRating label="위시 점수 / 구매 만족도" value={d.wishScore} onChange={v => u({ wishScore: v })} />
-    <F label="한줄평 (선택)" value={d.oneiner} onChange={v => u({ oneiner: v })} placeholder="드디어 샀다 최고야" />
+    <F label="한줄평 (선택)" value={d.oneiner} onChange={v => u({ oneiner: v })} placeholder="고민은 배송을 늦출 뿐" />
     <F label="링크 (선택, Cmd+클릭으로 열기)" value={d.link} onChange={v => u({ link: v })} placeholder="https://..." />
   </>
 }
@@ -2244,33 +2283,33 @@ function TransportForm({ d, u }: { d: TransportData; u: (p: Partial<TransportDat
       )}
     </div>
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 20px 1fr', gap: 6, alignItems: 'end', marginBottom: 9 }}>
-      <div><div style={lbl}>출발지</div><input value={d.from} onChange={e => u({ from: e.target.value })} placeholder="서울 / SEL" style={inp} /></div>
+      <div><div style={lbl}>출발지</div><input value={d.from} onChange={e => u({ from: e.target.value })} placeholder="대구 / DAE" style={inp} /></div>
       <div style={{ textAlign: 'center', paddingBottom: 8, color: '#aaa', fontSize: 14 }}>▶</div>
       <div><div style={lbl}>도착지</div><input value={d.to} onChange={e => u({ to: e.target.value })} placeholder="부산 / PUS" style={inp} /></div>
     </div>
     <Row>
-      <F label="날짜" value={d.date} onChange={v => u({ date: v })} placeholder="2025.05.20" />
+      <F label="날짜" value={d.date} onChange={v => u({ date: v })} placeholder="2026.05.26" />
       <F label="출발 시간" value={d.departureTime} onChange={v => u({ departureTime: v })} placeholder="09:35" />
     </Row>
     <Row>
       <F label="편명 / 차량번호" value={d.vehicleNumber} onChange={v => u({ vehicleNumber: v })} placeholder="KE123 / KTX 101" />
       <F label="좌석 / 게이트" value={d.seat} onChange={v => u({ seat: v })} placeholder="12A / G32" />
     </Row>
-    <F label="가격 (선택)" value={d.price} onChange={v => u({ price: v })} placeholder="₩59,800" />
+    <F label="가격 (선택)" value={d.price} onChange={v => u({ price: v })} placeholder="59800" />
   </>
 }
 
 function CheckinForm({ d, u }: { d: CheckinData; u: (p: Partial<CheckinData>) => void }) {
   return <>
-    <F label="장소 이름" value={d.place} onChange={v => u({ place: v })} placeholder="성수 카페 00" />
+    <F label="장소 이름" value={d.place} onChange={v => u({ place: v })} placeholder="카아페에" />
     <Row>
-      <F label="카테고리" value={d.category} onChange={v => u({ category: v })} placeholder="카페 · 맛집 · 소품숍" />
-      <F label="날짜" value={d.date} onChange={v => u({ date: v })} placeholder="2025.05.20" />
+      <F label="카테고리" value={d.category} onChange={v => u({ category: v })} placeholder="카페" />
+      <F label="날짜" value={d.date} onChange={v => u({ date: v })} placeholder="2026.05.26" />
     </Row>
     <F label="주소 (선택)" value={d.address} onChange={v => u({ address: v })} placeholder="서울 성동구..." />
     <Row>
-      <F label="방문 목적" value={d.purpose} onChange={v => u({ purpose: v })} placeholder="작업 · 데이트" />
-      <F label="동행" value={d.companions} onChange={v => u({ companions: v })} placeholder="친구 2명" />
+      <F label="방문 목적" value={d.purpose} onChange={v => u({ purpose: v })} placeholder="친목도모" />
+      <F label="동행" value={d.companions} onChange={v => u({ companions: v })} placeholder="친구 a, 친구 b" />
     </Row>
     <div style={{ marginBottom: 10 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
@@ -2353,12 +2392,12 @@ function FoodForm({ d, u }: { d: FoodData; u: (p: Partial<FoodData>) => void }) 
 
   return <>
     <ImgPicker label="음식 사진 (선택)" value={d.photoB64} onChange={v => u({ photoB64: v })} cropFrame={{ w: 136, h: 136 }} />
-    <F label="음식 메뉴" value={d.dish} onChange={v => u({ dish: v })} placeholder="흑돼지 삼겹살 2인분" />
+    <F label="음식 메뉴" value={d.dish} onChange={v => u({ dish: v })} placeholder="매참김밥" />
     <Row>
-      <F label="음식점 / 브랜드" value={d.restaurant} onChange={v => u({ restaurant: v })} placeholder="제주 흑돼지 식당" />
-      <F label="날짜" value={d.date} onChange={v => u({ date: v })} placeholder="2025.05.20" />
+      <F label="음식점 / 브랜드" value={d.restaurant} onChange={v => u({ restaurant: v })} placeholder="바뷔치" />
+      <F label="날짜" value={d.date} onChange={v => u({ date: v })} placeholder="2026.05.26" />
     </Row>
-    <F label="맛 한줄평 (선택)" value={d.comment} onChange={v => u({ comment: v })} placeholder="인생 맛집 등록 확정!" />
+    <F label="맛 한줄평 (선택)" value={d.comment} onChange={v => u({ comment: v })} placeholder="없어지지 마 바뷔치야" />
 
     <div style={{ marginBottom: 10 }}>
       <div style={lbl}>테이블 매트 색상</div>
@@ -2476,8 +2515,8 @@ function YoutubeForm({ d, u }: { d: YoutubeData; u: (p: Partial<YoutubeData>) =>
       </div>
     )}
 
-    <F label="시청소감" value={d.impression} onChange={v => u({ impression: v })} placeholder="마지막 반전이 진짜 소름..." />
-    <F label="날짜" value={d.date} onChange={v => u({ date: v })} placeholder="2025.05.20" />
+    <F label="시청소감" value={d.impression} onChange={v => u({ impression: v })} placeholder="대박적 사건" />
+    <F label="날짜" value={d.date} onChange={v => u({ date: v })} placeholder="2026.05.26" />
   </>
 }
 
@@ -2500,7 +2539,7 @@ function QuoteForm({ d, u }: { d: QuoteData; u: (p: Partial<QuoteData>) => void 
     </div>
     <div style={{ marginBottom: 9 }}>
       <div style={lbl}>문장</div>
-      <textarea value={d.text} onChange={e => u({ text: e.target.value })} placeholder="마음에 와닿은 문장을 입력하세요..."
+      <textarea value={d.text} onChange={e => u({ text: e.target.value })} placeholder="마음에 와닿은 문장..."
         style={{ ...inp, height: 72, resize: 'none' as const }} />
     </div>
     <Row>
@@ -2514,29 +2553,29 @@ function QuoteForm({ d, u }: { d: QuoteData; u: (p: Partial<QuoteData>) => void 
 function MusicForm({ d, u }: { d: MusicData; u: (p: Partial<MusicData>) => void }) {
   return <>
     <ImgPicker label="앨범 아트 (선택)" value={d.albumArtB64} onChange={v => u({ albumArtB64: v })} cropFrame={{ w: 100, h: 100 }} />
-    <F label="곡 제목" value={d.title} onChange={v => u({ title: v })} placeholder="Bohemian Rhapsody" />
-    <F label="아티스트" value={d.artist} onChange={v => u({ artist: v })} placeholder="Queen" />
-    <F label="마음에 드는 가사 한 줄" value={d.lyric} onChange={v => u({ lyric: v })} placeholder="Is this the real life? Is this just fantasy?" />
+    <F label="곡 제목" value={d.title} onChange={v => u({ title: v })} placeholder="수선화" />
+    <F label="아티스트" value={d.artist} onChange={v => u({ artist: v })} placeholder="이츠" />
+    <F label="마음에 드는 가사 한 줄" value={d.lyric} onChange={v => u({ lyric: v })} placeholder="보잘것없는 것에 망치거나 아파하지 않길" />
   </>
 }
 
 function MakeupForm({ d, u }: { d: MakeupData; u: (p: Partial<MakeupData>) => void }) {
   return <>
     <F label="날짜" value={d.date} onChange={v => u({ date: v })} />
-    <F label="선크림" value={d.sun} onChange={v => u({ sun: v })} placeholder="라네즈 선 밀크 SPF50+" />
-    <F label="베이스" value={d.base} onChange={v => u({ base: v })} placeholder="헤라 블랙쿠션 23호" />
-    <F label="쉐딩" value={d.shading} onChange={v => u({ shading: v })} placeholder="3CE 쉐딩" />
-    <F label="아이섀도" value={d.eyeShadow} onChange={v => u({ eyeShadow: v })} placeholder="롬앤 베터댄팔레트 #03" />
-    <F label="아이라이너" value={d.eyeLiner} onChange={v => u({ eyeLiner: v })} placeholder="클리오 킬블랙 펜라이너" />
-    <F label="마스카라" value={d.eyeMascara} onChange={v => u({ eyeMascara: v })} placeholder="헤라 블랙마스카라" />
-    <F label="언더섀도" value={d.underShadow} onChange={v => u({ underShadow: v })} placeholder="" />
-    <F label="언더마스카라" value={d.underMascara} onChange={v => u({ underMascara: v })} placeholder="" />
-    <F label="언더하이라이터" value={d.underHighlighter} onChange={v => u({ underHighlighter: v })} placeholder="" />
-    <F label="하이라이터" value={d.highlighter} onChange={v => u({ highlighter: v })} placeholder="바비브라운 하이라이팅 파우더" />
-    <F label="블러셔" value={d.blush} onChange={v => u({ blush: v })} placeholder="롬앤 쥬시라스팅틴트 블러셔" />
-    <F label="립" value={d.lip} onChange={v => u({ lip: v })} placeholder="3CE 무드레시피 립컬러 #사누키" />
-    <F label="오늘의 무드" value={d.mood} onChange={v => u({ mood: v })} placeholder="봄 소풍 청순 룩" />
-    <F label="한줄 코멘트" value={d.comment} onChange={v => u({ comment: v })} placeholder="오늘 메이크업 만족스러웠다!" />
+    <F label="선크림" value={d.sun} onChange={v => u({ sun: v })} placeholder="선크림" />
+    <F label="베이스" value={d.base} onChange={v => u({ base: v })} placeholder="베이스" />
+    <F label="쉐딩" value={d.shading} onChange={v => u({ shading: v })} placeholder="쉐딩" />
+    <F label="아이섀도" value={d.eyeShadow} onChange={v => u({ eyeShadow: v })} placeholder="섀도" />
+    <F label="아이라이너" value={d.eyeLiner} onChange={v => u({ eyeLiner: v })} placeholder="라이너" />
+    <F label="마스카라" value={d.eyeMascara} onChange={v => u({ eyeMascara: v })} placeholder="마스카라" />
+    <F label="언더섀도" value={d.underShadow} onChange={v => u({ underShadow: v })} placeholder="언더섀도우" />
+    <F label="언더마스카라" value={d.underMascara} onChange={v => u({ underMascara: v })} placeholder="언더마스카라" />
+    <F label="언더하이라이터" value={d.underHighlighter} onChange={v => u({ underHighlighter: v })} placeholder="언더하이라이터" />
+    <F label="하이라이터" value={d.highlighter} onChange={v => u({ highlighter: v })} placeholder="하이라이터" />
+    <F label="블러셔" value={d.blush} onChange={v => u({ blush: v })} placeholder="블러셔" />
+    <F label="립" value={d.lip} onChange={v => u({ lip: v })} placeholder="립" />
+    <F label="오늘의 무드" value={d.mood} onChange={v => u({ mood: v })} placeholder="추구미" />
+    <F label="한줄 코멘트" value={d.comment} onChange={v => u({ comment: v })} placeholder="오늘 메이크업" />
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
       <span style={{ fontSize: 12, color: 'var(--color-text-muted)', minWidth: 72 }}>만족도</span>
       <input type="range" min={0} max={10} value={d.rating} onChange={e => u({ rating: Number(e.target.value) })} style={{ flex: 1 }} />
@@ -2571,7 +2610,20 @@ function SkincareForm({ d, u }: { d: SkincareData; u: (p: Partial<SkincareData>)
     if (!/^\d{4}-\d{2}-\d{2}$/.test(apiDate)) return
     setFetching(true)
     try {
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=35.8714&longitude=128.6014&daily=weather_code,temperature_2m_max,temperature_2m_min,relative_humidity_2m_mean&timezone=Asia%2FSeoul&start_date=${apiDate}&end_date=${apiDate}`
+      let lat = 35.8714, lng = 128.6014, regionName = '대구'
+      try {
+        const raw = await api.settings.get('scrap_defaults')
+        if (raw) {
+          const region = JSON.parse(raw)?.skincare?.weatherRegion
+          if (region && WEATHER_REGIONS[region]) {
+            lat = WEATHER_REGIONS[region].lat
+            lng = WEATHER_REGIONS[region].lng
+            regionName = region
+          }
+        }
+      } catch {}
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&daily=weather_code,temperature_2m_max,temperature_2m_min,relative_humidity_2m_mean&timezone=Asia%2FSeoul&start_date=${apiDate}&end_date=${apiDate}`
+      void regionName
       const raw = await api.http.fetchText(url)
       const json = JSON.parse(raw) as { daily?: { weather_code?: number[]; temperature_2m_max?: number[]; temperature_2m_min?: number[]; relative_humidity_2m_mean?: number[] } }
       const code = json.daily?.weather_code?.[0]
@@ -2606,12 +2658,12 @@ function SkincareForm({ d, u }: { d: SkincareData; u: (p: Partial<SkincareData>)
       ))}
     </div>
     <F label="피부 컨디션" value={d.condition} onChange={v => u({ condition: v })} placeholder="촉촉함 / 당김 / 트러블" />
-    <F label="날씨 (대구, 자동 입력 가능)" value={d.weather} onChange={v => u({ weather: v })} placeholder="맑음 · 12°/24° · 습도 45%" />
-    <F label="토너" value={d.toner} onChange={v => u({ toner: v })} placeholder="이니스프리 그린티 씨드 토너" />
-    <F label="세럼" value={d.serum} onChange={v => u({ serum: v })} placeholder="SK-II 에센스" />
-    <F label="크림" value={d.cream} onChange={v => u({ cream: v })} placeholder="라네즈 워터뱅크 크림" />
+    <F label="날씨 (자동 입력 가능)" value={d.weather} onChange={v => u({ weather: v })} placeholder="맑음 · 12°/24° · 습도 45%" />
+    <F label="토너" value={d.toner} onChange={v => u({ toner: v })} placeholder="토너" />
+    <F label="세럼" value={d.serum} onChange={v => u({ serum: v })} placeholder="에센스" />
+    <F label="크림" value={d.cream} onChange={v => u({ cream: v })} placeholder="크림" />
     <F label="스페셜 케어" value={d.special} onChange={v => u({ special: v })} placeholder="시트마스크 / 앰플 등" />
-    <F label="메모" value={d.memo} onChange={v => u({ memo: v })} placeholder="오늘은 피부가 유독 건조했다..." />
+    <F label="메모" value={d.memo} onChange={v => u({ memo: v })} placeholder="사막같은 여기서 날 구해줘..." />
   </>
 }
 

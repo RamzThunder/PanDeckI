@@ -57,6 +57,7 @@ interface ScrapField { key: string; label: string; type?: ScrapFieldType; option
 
 const SCRAP_TPL_FIELDS: Record<string, ScrapField[]> = {
   baseball: [
+    { key: 'homeTeam', label: '내 팀', type: 'select', options: ['삼성 라이온즈', 'KIA 타이거즈', 'LG 트윈스', '두산 베어스', 'NC 다이노스', '롯데 자이언츠', 'SSG 랜더스', 'KT 위즈', '한화 이글스', '키움 히어로즈', '울산 웨일즈', '상무 피닉스'] },
     { key: 'away',    label: '원정팀' },
     { key: 'venue',   label: '경기장' },
     { key: 'seat',    label: '좌석' },
@@ -151,6 +152,7 @@ const SCRAP_TPL_FIELDS: Record<string, ScrapField[]> = {
     { key: 'rating',            label: '만족도 (1~5)', type: 'number' },
   ],
   skincare: [
+    { key: 'weatherRegion', label: '날씨 지역', type: 'select', options: ['서울', '부산', '대구', '인천', '광주', '대전', '울산', '수원', '창원', '전주', '청주', '제주'] },
     { key: 'time',      label: 'AM / PM', type: 'select', options: ['AM', 'PM'] },
     { key: 'condition', label: '피부 컨디션' },
     { key: 'weather',   label: '날씨' },
