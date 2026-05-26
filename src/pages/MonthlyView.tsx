@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { toPng } from 'html-to-image'
 import { api } from '../api'
 import { toLocalDate, toYearMonth } from '../store/diary'
 
@@ -158,8 +159,9 @@ export default function MonthlyView({ currentDate, onPrev, onNext, onDayClick, o
 
   useEffect(() => {
     const onExportPng = async () => {
-      const b64 = await api.export.captureToB64().catch(() => '')
-      if (!b64) return
+      if (!rootRef.current) return
+      const dataUrl = await toPng(rootRef.current, { pixelRatio: 2 }).catch(() => '')
+      if (!dataUrl) return
       const now = new Date()
       const yy  = String(now.getFullYear()).slice(2)
       const mm  = String(now.getMonth() + 1).padStart(2, '0')
@@ -168,7 +170,7 @@ export default function MonthlyView({ currentDate, onPrev, onNext, onDayClick, o
       const min = String(now.getMinutes()).padStart(2, '0')
       const safeName = (diaryName || 'dida').replace(/\s+/g, '_')
       const filename = `${safeName}_${yy}${mm}${dd}_${hh}${min}.png`
-      setExportPreview({ dataUrl: `data:image/png;base64,${b64}`, filename })
+      setExportPreview({ dataUrl, filename })
     }
     window.addEventListener('diary-export-png', onExportPng)
     return () => window.removeEventListener('diary-export-png', onExportPng)
