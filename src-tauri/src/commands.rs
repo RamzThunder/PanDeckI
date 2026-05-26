@@ -385,34 +385,34 @@ print(json.dumps(sorted(fm.availableFontFamilies())))
 }
 
 #[cfg(target_os = "windows")]
-fn list_fonts_impl() -> Vec<String> {
-    let script = r#"Add-Type -AssemblyName 'System.Drawing'; [System.Drawing.Text.InstalledFontCollection]::new().Families | ForEach-Object { $_.Name } | Sort-Object | ConvertTo-Json -Compress"#;
-    let output = std::process::Command::new("powershell")
+fn run_ps(script: &str) -> Option<Vec<String>> {
+    let out = std::process::Command::new("powershell")
         .args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", script])
-        .output()
-        .ok();
-    if let Some(out) = output {
-        if out.status.success() {
-            if let Ok(s) = String::from_utf8(out.stdout) {
-                if let Ok(fonts) = serde_json::from_str::<Vec<String>>(s.trim()) {
-                    if !fonts.is_empty() { return fonts; }
-                }
-            }
-        }
+        .output().ok()?;
+    if !out.status.success() { return None; }
+    let s = String::from_utf8_lossy(&out.stdout).to_string();
+    let s = s.trim();
+    if let Ok(v) = serde_json::from_str::<Vec<String>>(s) {
+        if !v.is_empty() { return Some(v); }
     }
-    let mut fonts = std::collections::BTreeSet::new();
-    if let Ok(entries) = fs::read_dir(r"C:\Windows\Fonts") {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-            if ["ttf", "otf"].contains(&ext.as_str()) {
-                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                    fonts.insert(stem.split('-').next().unwrap_or(stem).to_string());
-                }
-            }
-        }
+    // ConvertTo-Json이 단일 항목일 때 배열 대신 문자열 반환하는 경우 대응
+    if let Ok(v) = serde_json::from_str::<String>(s) {
+        if !v.is_empty() { return Some(vec![v]); }
     }
-    fonts.into_iter().collect()
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn list_fonts_impl() -> Vec<String> {
+    // 1순위: DirectWrite(PresentationCore) — 한글 포함 전체 시스템 폰트
+    let dw = r#"[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Add-Type -AssemblyName PresentationCore; [System.Windows.Media.Fonts]::SystemFontFamilies | ForEach-Object { $_.Source } | Sort-Object -Unique | ConvertTo-Json -Compress"#;
+    if let Some(fonts) = run_ps(dw) { return fonts; }
+
+    // 2순위: GDI InstalledFontCollection (UTF-8 강제)
+    let gdi = r#"[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Add-Type -AssemblyName System.Drawing; [System.Drawing.Text.InstalledFontCollection]::new().Families | ForEach-Object { $_.Name } | Sort-Object | ConvertTo-Json -Compress"#;
+    if let Some(fonts) = run_ps(gdi) { return fonts; }
+
+    vec![]
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
