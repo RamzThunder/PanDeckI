@@ -22,9 +22,10 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin
+      - name: Install Rust stable
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add aarch64-apple-darwin
 
       - uses: swatinem/rust-cache@v2
         with:
@@ -81,7 +82,8 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust stable
+        run: rustup toolchain install stable --profile minimal
 
       - uses: swatinem/rust-cache@v2
         with:
