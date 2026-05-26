@@ -104,7 +104,7 @@ pub fn run() {
 
             // Windows: 시작 시 최대화, DWM 그림자 활성화 (macOS처럼 창 부유감)
             #[cfg(target_os = "windows")]
-            let builder = builder.maximized(true).shadow(true);
+            let builder = builder.maximized(true).shadow(false);
 
             builder.build()?;
 
