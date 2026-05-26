@@ -93,15 +93,20 @@ pub fn run() {
             app.manage(YoutubeProxyPort(yt_port));
 
             // Safari UA로 창 생성 — asset:// 오리진을 YouTube가 거부하는 문제 우회
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+            let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("dida")
                 .inner_size(1800.0, 1012.0)
                 .min_inner_size(900.0, 506.0)
                 .resizable(true)
                 .decorations(false)
                 .transparent(true)
-                .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15")
-                .build()?;
+                .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15");
+
+            // Windows: 시작 시 최대화 + DWM 그림자/경계선 제거
+            #[cfg(target_os = "windows")]
+            let builder = builder.maximized(true).shadow(false);
+
+            builder.build()?;
 
             let db_path = resolve_db_path(app);
             db::setup_database(&db_path)?;
