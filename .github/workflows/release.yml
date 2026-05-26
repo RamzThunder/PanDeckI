@@ -27,9 +27,14 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup target add aarch64-apple-darwin
 
-      - uses: swatinem/rust-cache@v2
+      - name: Cache Cargo
+        uses: actions/cache@v4
         with:
-          workspaces: './src-tauri -> target'
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: macos-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - run: npm install
 
@@ -85,9 +90,14 @@ jobs:
       - name: Install Rust stable
         run: rustup toolchain install stable --profile minimal
 
-      - uses: swatinem/rust-cache@v2
+      - name: Cache Cargo
+        uses: actions/cache@v4
         with:
-          workspaces: './src-tauri -> target'
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: windows-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - run: npm install
 
