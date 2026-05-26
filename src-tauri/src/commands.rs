@@ -709,22 +709,25 @@ for w in wl:
 #[cfg(target_os = "windows")]
 fn capture_window_to_file(app: &AppHandle, tmp: &std::path::Path) -> Result<(), String> {
     let tmp_path = tmp.to_string_lossy().replace('\'', "''");
+    // GetClientRect + ClientToScreen で WebView2 クライアント領域を正確に取得し CopyFromScreen
     let script = format!(
         r#"Add-Type @'
 using System; using System.Runtime.InteropServices; using System.Drawing; using System.Drawing.Imaging;
 public class DidaCapture {{
-    [DllImport("user32.dll")] public static extern IntPtr FindWindow(string cls, string title);
-    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, ref RECT r);
-    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hwnd, IntPtr hdc, uint f);
-    [StructLayout(LayoutKind.Sequential)] public struct RECT {{ public int L, T, R, B; }}
+    [DllImport("user32.dll")] public static extern IntPtr FindWindow(string c, string t);
+    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, ref RECT r);
+    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
+    [StructLayout(LayoutKind.Sequential)] public struct RECT {{ public int L,T,R,B; }}
+    [StructLayout(LayoutKind.Sequential)] public struct POINT {{ public int X,Y; }}
     public static bool Capture(string title, string path) {{
         IntPtr hwnd = FindWindow(null, title);
         if (hwnd == IntPtr.Zero) return false;
-        RECT r = new RECT(); GetWindowRect(hwnd, ref r);
-        int w = r.R - r.L, h = r.B - r.T;
+        RECT cr = new RECT(); GetClientRect(hwnd, ref cr);
+        int w = cr.R - cr.L, h = cr.B - cr.T;
         if (w <= 0 || h <= 0) return false;
+        POINT origin = new POINT(); ClientToScreen(hwnd, ref origin);
         var bmp = new Bitmap(w, h, PixelFormat.Format32bppArgb);
-        using (var g = Graphics.FromImage(bmp)) {{ IntPtr hdc = g.GetHdc(); PrintWindow(hwnd, hdc, 0x2); g.ReleaseHdc(hdc); }}
+        using (var g = Graphics.FromImage(bmp)) {{ g.CopyFromScreen(origin.X, origin.Y, 0, 0, new Size(w, h)); }}
         bmp.Save(path, ImageFormat.Png); return true;
     }}
 }}
@@ -737,18 +740,17 @@ public class DidaCapture {{
         .status()
         .map(|s| s.success())
         .unwrap_or(false);
-    if !ok || !tmp.exists() {
-        let win = app.get_webview_window("main").ok_or("window not found")?;
-        let scale = win.scale_factor().map_err(|e| e.to_string())?;
-        let phys_pos = win.outer_position().map_err(|e| e.to_string())?;
-        let phys_size = win.outer_size().map_err(|e| e.to_string())?;
-        let lx = (phys_pos.x as f64 / scale) as i32;
-        let ly = (phys_pos.y as f64 / scale) as i32;
-        let lw = (phys_size.width as f64 / scale) as u32;
-        let lh = (phys_size.height as f64 / scale) as u32;
-        screenshot_region(lx, ly, lw, lh, &tmp.to_string_lossy())?;
-    }
-    Ok(())
+    if ok && tmp.exists() { return Ok(()); }
+    // fallback: inner_position + inner_size (client area via Tauri)
+    let win = app.get_webview_window("main").ok_or("window not found")?;
+    let scale = win.scale_factor().map_err(|e| e.to_string())?;
+    let phys_pos = win.inner_position().map_err(|e| e.to_string())?;
+    let phys_size = win.inner_size().map_err(|e| e.to_string())?;
+    let lx = (phys_pos.x as f64 / scale) as i32;
+    let ly = (phys_pos.y as f64 / scale) as i32;
+    let lw = (phys_size.width as f64 / scale) as u32;
+    let lh = (phys_size.height as f64 / scale) as u32;
+    screenshot_region(lx, ly, lw, lh, &tmp.to_string_lossy())
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
