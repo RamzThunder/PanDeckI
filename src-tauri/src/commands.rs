@@ -158,6 +158,20 @@ pub fn get_setting(state: State<DbState>, key: String) -> Result<Option<String>,
 }
 
 #[command]
+pub fn get_settings_batch(state: State<DbState>, keys: Vec<String>) -> Result<std::collections::HashMap<String, String>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut map = std::collections::HashMap::new();
+    for key in &keys {
+        if let Ok(val) = conn.query_row(
+            "SELECT value FROM settings WHERE key = ?1", [key.as_str()], |row| row.get::<_, String>(0)
+        ) {
+            map.insert(key.clone(), val);
+        }
+    }
+    Ok(map)
+}
+
+#[command]
 pub fn set_setting(state: State<DbState>, key: String, value: String) -> Result<(), String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute(

@@ -123,6 +123,7 @@ pub fn run() {
             commands::get_monthly,
             commands::save_monthly,
             commands::get_setting,
+            commands::get_settings_batch,
             commands::set_setting,
             commands::pick_image,
             commands::pick_video,

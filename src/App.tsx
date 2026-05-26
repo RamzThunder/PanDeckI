@@ -45,8 +45,12 @@ export default function App(): JSX.Element {
 
   useEffect(() => {
     async function loadSettings() {
-      const savedTheme = await api.settings.get('active_theme').catch(() => null)
-      const id = savedTheme ?? 'sky'
+      const s = await invoke<Record<string, string>>('get_settings_batch', {
+        keys: ['active_theme', 'appZoom', 'globalFont', 'fontScale', 'fontOffsetY',
+               'ghostMosaicIntensity', 'ghostBlurIntensity', 'diaryName']
+      }).catch(() => ({} as Record<string, string>))
+
+      const id = s['active_theme'] ?? 'sky'
       setActiveThemeId(id)
       const preset = PRESET_THEMES.find(t => t.id === id)
       if (preset) {
@@ -57,7 +61,7 @@ export default function App(): JSX.Element {
         else { applyTheme(PRESET_THEMES[0]) }
       }
 
-      const savedZoom = await api.settings.get('appZoom').catch(() => null)
+      const savedZoom = s['appZoom']
       if (savedZoom) {
         const z = parseFloat(savedZoom)
         if (!isNaN(z)) { setAppZoom(z); resizeWindow(z) }
@@ -65,33 +69,37 @@ export default function App(): JSX.Element {
         resizeWindow(1.0)
       }
 
-      const savedFont = await api.settings.get('globalFont').catch(() => null)
+      const savedFont = s['globalFont'] ?? ''
       if (savedFont) setGlobalFont(savedFont)
-      applyGlobalFont(savedFont ?? '')
+      applyGlobalFont(savedFont)
 
-      const savedFontScale = await api.settings.get('fontScale').catch(() => null)
+      const savedFontScale = s['fontScale']
       if (savedFontScale) {
         const v = parseFloat(savedFontScale)
         if (!isNaN(v)) { setFontScale(v); document.documentElement.style.setProperty('--font-scale', v.toString()) }
       }
 
-      const savedFontOffsetY = await api.settings.get('fontOffsetY').catch(() => null)
+      const savedFontOffsetY = s['fontOffsetY']
       if (savedFontOffsetY) {
         const v = parseFloat(savedFontOffsetY)
         if (!isNaN(v)) { setFontOffsetY(v); document.documentElement.style.setProperty('--font-offset-y', v + 'px') }
       }
 
-      const savedMosaic = await api.settings.get('ghostMosaicIntensity').catch(() => null)
+      const savedMosaic = s['ghostMosaicIntensity']
       if (savedMosaic) { const v = parseInt(savedMosaic); if (!isNaN(v)) setMosaicIntensity(v) }
 
-      const savedBlur = await api.settings.get('ghostBlurIntensity').catch(() => null)
+      const savedBlur = s['ghostBlurIntensity']
       if (savedBlur) { const v = parseInt(savedBlur); if (!isNaN(v)) setBlurIntensity(v) }
 
-      const savedDiaryName = await api.settings.get('diaryName').catch(() => null)
+      const savedDiaryName = s['diaryName']
       if (savedDiaryName) setDiaryName(savedDiaryName)
     }
     loadSettings()
-    api.fonts.list().then(fonts => setSystemFonts(fonts)).catch(() => {})
+    // 폰트 목록은 시작 직후 로딩하면 Windows에서 PowerShell 초기화로 느려짐 — 1초 지연
+    const fontTimer = setTimeout(() => {
+      api.fonts.list().then(fonts => setSystemFonts(fonts)).catch(() => {})
+    }, 1000)
+    return () => clearTimeout(fontTimer)
   }, [])
 
   // Scroll wheel on any range slider adjusts it
