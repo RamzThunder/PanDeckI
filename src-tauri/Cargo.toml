@@ -29,6 +29,7 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 dirs = "5"
 base64 = "0.22"
 reqwest = { version = "0.12", features = ["json"] }
+raw-window-handle = "0.6"
 
 [profile.release]
 panic = "abort"

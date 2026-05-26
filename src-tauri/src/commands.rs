@@ -674,42 +674,55 @@ fn screenshot_region(_lx: i32, _ly: i32, _lw: u32, _lh: u32, _path: &str) -> Res
 }
 
 #[cfg(target_os = "macos")]
+fn get_cg_window_id(win: &tauri::WebviewWindow) -> Option<u32> {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    let handle = win.window_handle().ok()?;
+    let ns_view = match handle.as_raw() {
+        RawWindowHandle::AppKit(h) => h.ns_view.as_ptr() as *mut std::ffi::c_void,
+        _ => return None,
+    };
+    #[link(name = "objc")]
+    extern "C" {
+        fn sel_registerName(s: *const std::os::raw::c_char) -> *const std::ffi::c_void;
+        fn objc_msgSend(recv: *mut std::ffi::c_void, sel: *const std::ffi::c_void, ...) -> *mut std::ffi::c_void;
+    }
+    unsafe {
+        let sel_window = sel_registerName(b"window\0".as_ptr() as *const _);
+        let ns_window = objc_msgSend(ns_view, sel_window);
+        if ns_window.is_null() { return None; }
+        let sel_num = sel_registerName(b"windowNumber\0".as_ptr() as *const _);
+        let n = objc_msgSend(ns_window, sel_num) as std::os::raw::c_long;
+        if n > 0 { Some(n as u32) } else { None }
+    }
+}
+
+#[cfg(target_os = "macos")]
 fn capture_window_to_file(app: &AppHandle, tmp: &std::path::Path) -> Result<(), String> {
     let win = app.get_webview_window("main").ok_or("window not found")?;
-    let py = r#"
-import Quartz, sys
-wl = Quartz.CGWindowListCopyWindowInfo(Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID)
-for w in wl:
-    if w.get('kCGWindowOwnerName','') == 'dida':
-        print(w['kCGWindowNumber']); sys.exit(0)
-"#;
-    let id_out = std::process::Command::new("python3").arg("-c").arg(py).output().ok();
-    let window_id = id_out
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
-    if let Some(wid) = window_id {
+    if let Some(wid) = get_cg_window_id(&win) {
         std::process::Command::new("screencapture")
-            .args(["-l", &wid, "-x", tmp.to_str().unwrap()])
+            .args(["-l", &wid.to_string(), "-x", tmp.to_str().unwrap()])
             .status()
             .map_err(|e| e.to_string())?;
-    } else {
-        let scale = win.scale_factor().map_err(|e| e.to_string())?;
-        let phys_pos = win.outer_position().map_err(|e| e.to_string())?;
-        let phys_size = win.outer_size().map_err(|e| e.to_string())?;
-        let lx = (phys_pos.x as f64 / scale) as i32;
-        let ly = (phys_pos.y as f64 / scale) as i32;
-        let lw = (phys_size.width as f64 / scale) as u32;
-        let lh = (phys_size.height as f64 / scale) as u32;
-        screenshot_region(lx, ly, lw, lh, tmp.to_str().unwrap())?;
+        if tmp.exists() {
+            return Ok(());
+        }
     }
-    Ok(())
+    // fallback: 영역 스크린샷
+    let scale = win.scale_factor().map_err(|e| e.to_string())?;
+    let phys_pos = win.outer_position().map_err(|e| e.to_string())?;
+    let phys_size = win.outer_size().map_err(|e| e.to_string())?;
+    let lx = (phys_pos.x as f64 / scale) as i32;
+    let ly = (phys_pos.y as f64 / scale) as i32;
+    let lw = (phys_size.width as f64 / scale) as u32;
+    let lh = (phys_size.height as f64 / scale) as u32;
+    screenshot_region(lx, ly, lw, lh, tmp.to_str().unwrap())
 }
 
 #[cfg(target_os = "windows")]
 fn capture_window_to_file(app: &AppHandle, tmp: &std::path::Path) -> Result<(), String> {
     let tmp_path = tmp.to_string_lossy().replace('\'', "''");
-    // GetClientRect + ClientToScreen で WebView2 クライアント領域を正確に取得し CopyFromScreen
+    // PrintWindow는 WebView2 GPU 콘텐츠를 잡지 못함 → GetClientRect+ClientToScreen+CopyFromScreen 사용
     let script = format!(
         r#"Add-Type @'
 using System; using System.Runtime.InteropServices; using System.Drawing; using System.Drawing.Imaging;
@@ -741,7 +754,7 @@ public class DidaCapture {{
         .map(|s| s.success())
         .unwrap_or(false);
     if ok && tmp.exists() { return Ok(()); }
-    // fallback: inner_position + inner_size (client area via Tauri)
+    // fallback: inner_position + inner_size (클라이언트 영역)
     let win = app.get_webview_window("main").ok_or("window not found")?;
     let scale = win.scale_factor().map_err(|e| e.to_string())?;
     let phys_pos = win.inner_position().map_err(|e| e.to_string())?;
