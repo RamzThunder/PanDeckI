@@ -44,7 +44,7 @@ interface CheckinData { place: string; category: string; address: string; date: 
 interface CoffeeData { roastery: string; bean: string; isIced: boolean; equipment: string; beanGrams: string; waterMl: string; brewTime: string; note: string }
 interface FoodData { dish: string; restaurant: string; photoB64: string; date: string; comment: string; matColor: string; matImageB64: string }
 interface YoutubeData { url: string; title: string; channel: string; thumbnailB64: string; channelAvatarB64: string; impression: string; date: string; duration: string }
-interface QuoteData { text: string; source: string; author: string; memo: string; layout: 'manuscript' | 'quote' }
+interface QuoteData { text: string; source: string; author: string; memo: string; layout: 'manuscript' | 'quote'; manuscriptNewline?: boolean }
 interface MusicData { title: string; artist: string; albumArtB64: string; lyric: string }
 interface MakeupData { date: string; sun: string; base: string; shading: string; eyeShadow: string; eyeLiner: string; eyeMascara: string; underShadow: string; underMascara: string; underHighlighter: string; highlighter: string; blush: string; lip: string; mood: string; comment: string; rating: number }
 interface SkincareData { date: string; time: 'AM' | 'PM'; condition: string; weather: string; toner: string; serum: string; cream: string; special: string; memo: string }
@@ -168,6 +168,17 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number, maxLine
     return out
   }
   return lines
+}
+
+// \n을 단락 구분으로 처리하는 wrap — 인용구 박스 등에서 사용
+function wrapMultiline(ctx: CanvasRenderingContext2D, text: string, maxW: number, maxLines: number): string[] {
+  const result: string[] = []
+  for (const para of text.split('\n')) {
+    if (result.length >= maxLines) break
+    if (!para.trim()) { result.push(''); continue }
+    result.push(...wrap(ctx, para, maxW, maxLines - result.length))
+  }
+  return result.slice(0, maxLines)
 }
 
 async function loadImg(src: string): Promise<HTMLImageElement> {
@@ -1346,10 +1357,10 @@ function drawQuoteBox(d: QuoteData, font: string): { dataUrl: string; w: number;
   const ink = '#2C3E50'
 
   const tc = measureCtx(`16px ${f}`)
-  const quoteLines = wrap(tc, d.text || '문장을 입력하세요', W - pad * 2, 5)
+  const quoteLines = wrapMultiline(tc, d.text || '문장을 입력하세요', W - pad * 2, 20)
 
   const mc = measureCtx(`12px ${f}`)
-  const memoLines = d.memo ? wrap(mc, d.memo, W - pad * 2, 4) : []
+  const memoLines = d.memo ? wrapMultiline(mc, d.memo, W - pad * 2, 8) : []
 
   const quoteH = quoteLines.length * 26
   const hasAttrib = !!(d.author || d.source)
@@ -1416,10 +1427,21 @@ function drawQuoteManuscript(d: QuoteData, font: string): { dataUrl: string; w: 
   const f = cf(font)
   const red = '#E74C3C'
   const cellSize = 22
-  const chars = Array.from(d.text || '문장을 입력하세요')
+  const rawText = (d.text && d.text.trim()) ? d.text : '문장을 입력하세요'
+  const useNewline = !!d.manuscriptNewline
+  const paragraphs = useNewline ? rawText.split('\n') : [rawText]
+  const totalChars = paragraphs.reduce((sum, p) => sum + Array.from(p).length, 0)
   // 글자 수에 맞춰 cols 결정 → 격자가 중앙에 조각처럼 떠 있는 느낌
-  const cols = Math.min(12, Math.max(4, Math.ceil(chars.length / 4)))
-  const rows = Math.max(1, Math.ceil(chars.length / cols))
+  const cols = Math.min(12, Math.max(4, Math.ceil(totalChars / 4)))
+  // 단락별 시작 행 계산 (줄바꿈 모드: \n마다 새 행, 일반 모드: 순차 흐름)
+  let totalRows = 0
+  const paraRowStarts: number[] = []
+  for (const para of paragraphs) {
+    paraRowStarts.push(totalRows)
+    const len = Array.from(para).length
+    totalRows += len === 0 ? 1 : Math.ceil(len / cols)
+  }
+  const rows = Math.max(1, totalRows)
   const gridW = cols * cellSize
   const gridH = rows * cellSize
   const gutter = 21
@@ -1493,11 +1515,15 @@ function drawQuoteManuscript(d: QuoteData, font: string): { dataUrl: string; w: 
   ctx.font = `${fontSize}px ${f}`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  chars.slice(0, cols * rows).forEach((ch, i) => {
-    const col = i % cols
-    const row = Math.floor(i / cols)
-    ctx.fillText(ch, gx + col * cellSize + cellSize / 2, gy + row * cellSize + cellSize / 2)
-  })
+  for (let pi = 0; pi < paragraphs.length; pi++) {
+    const paraChars = Array.from(paragraphs[pi])
+    const startRow = paraRowStarts[pi]
+    paraChars.forEach((ch: string, i: number) => {
+      const row = startRow + Math.floor(i / cols)
+      const col = i % cols
+      if (row < rows) ctx.fillText(ch, gx + col * cellSize + cellSize / 2, gy + row * cellSize + cellSize / 2)
+    })
+  }
 
   // 출처/저자 (격자 우측 하단, 빨간 잉크)
   let ay = gy + gridH + botGap
@@ -2603,10 +2629,25 @@ function QuoteForm({ d, u }: { d: QuoteData; u: (p: Partial<QuoteData>) => void 
         }}>원고지</button>
       </div>
     </div>
+    {d.layout === 'manuscript' && (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>줄바꿈 사용</span>
+        <div onClick={() => u({ manuscriptNewline: !d.manuscriptNewline })} style={{
+          width: 36, height: 20, borderRadius: 10, cursor: 'pointer', position: 'relative',
+          background: d.manuscriptNewline ? 'var(--color-primary)' : '#ccc', transition: 'background 0.2s',
+        }}>
+          <div style={{
+            position: 'absolute', top: 2, left: d.manuscriptNewline ? 18 : 2,
+            width: 16, height: 16, borderRadius: '50%', background: '#fff',
+            transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+          }} />
+        </div>
+      </div>
+    )}
     <div style={{ marginBottom: 9 }}>
       <div style={lbl}>문장</div>
       <textarea value={d.text} onChange={e => u({ text: e.target.value })} placeholder="마음에 와닿은 문장..."
-        style={{ ...inp, height: 72, resize: 'none' as const }} />
+        style={{ ...inp, height: 90, resize: 'vertical' as const }} />
     </div>
     <Row>
       <F label="출처 (책·매체)" value={d.source} onChange={v => u({ source: v })} placeholder="어린 왕자" />
