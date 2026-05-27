@@ -28,27 +28,33 @@ function parsePriceValue(value: string): { code: string; amount: string } {
   return { code: '', amount: value }
 }
 
+function currencySymbol(code: string | undefined, customUnit?: string): string {
+  if (code === 'CUSTOM') return customUnit || ''
+  return CURRENCIES.find(c => c.code === (code ?? 'KRW'))?.symbol ?? '₩'
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 type Category = 'hobby' | 'spend' | 'travel' | 'food' | 'archive' | 'style'
-type TemplateId = 'baseball' | 'ticket' | 'game' | 'receipt' | 'wishlist' | 'transport' | 'checkin' | 'coffee' | 'food_note' | 'youtube' | 'quote' | 'music' | 'makeup' | 'skincare'
+type TemplateId = 'baseball' | 'ticket' | 'game' | 'receipt' | 'wishlist' | 'transport' | 'checkin' | 'coffee' | 'coffee_simple' | 'food_note' | 'youtube' | 'quote' | 'music' | 'makeup' | 'skincare'
 
 interface BaseballData { bgImageB64: string; away: string; homeScore: string; awayScore: string; venue: string; date: string; seat: string; memo: string; isAway: boolean; homeTeam?: string }
 interface TicketData { category: '영화' | '공연' | '전시' | '기타'; title: string; date: string; time: string; venue: string; seat: string; price: string; photoB64: string }
 interface GameData { screenshotB64: string; title: string; date: string; oneiner: string; frameColor: string; frameBgB64: string }
 interface ReceiptItem { name: string; price: string }
-interface ReceiptData { store: string; date: string; items: ReceiptItem[]; footer: string; currency?: string }
+interface ReceiptData { store: string; date: string; items: ReceiptItem[]; footer: string; currency?: string; customCurrency?: string }
 interface WishlistData { item: string; price: string; wishScore: number; photoB64: string; oneiner: string; date: string; link: string }
 interface TransportData { type: 'KTX' | 'SRT' | '버스' | '지하철' | '비행기' | '기타'; typeLabel: string; from: string; to: string; date: string; departureTime: string; vehicleNumber: string; seat: string; price: string }
 interface CheckinData { place: string; category: string; address: string; date: string; rating: number; purpose: string; companions: string; memo: string; link: string }
 interface CoffeeData { roastery: string; bean: string; isIced: boolean; equipment: string; beanGrams: string; waterMl: string; brewTime: string; note: string }
-interface FoodData { dish: string; restaurant: string; photoB64: string; date: string; comment: string; matColor: string; matImageB64: string }
+interface CoffeeSimpleData { shop: string; menu: string; date: string; isIced: boolean; mood: string; note: string }
+interface FoodData { dish: string; restaurant: string; photoB64: string; date: string; comment: string; matColor: string; matImageB64: string; photoPlaceholder?: string; photoPlaceholderSize?: string }
 interface YoutubeData { url: string; title: string; channel: string; thumbnailB64: string; channelAvatarB64: string; impression: string; date: string; duration: string }
 interface QuoteData { text: string; source: string; author: string; memo: string; layout: 'manuscript' | 'quote'; manuscriptNewline?: boolean }
 interface MusicData { title: string; artist: string; albumArtB64: string; lyric: string }
 interface MakeupData { date: string; sun: string; base: string; shading: string; eyeShadow: string; eyeLiner: string; eyeMascara: string; underShadow: string; underMascara: string; underHighlighter: string; highlighter: string; blush: string; lip: string; mood: string; comment: string; rating: number }
 interface SkincareData { date: string; time: 'AM' | 'PM'; condition: string; weather: string; toner: string; serum: string; cream: string; special: string; memo: string }
-type AnyData = BaseballData | TicketData | GameData | ReceiptData | WishlistData | TransportData | CheckinData | CoffeeData | FoodData | YoutubeData | QuoteData | MusicData | MakeupData | SkincareData
+type AnyData = BaseballData | TicketData | GameData | ReceiptData | WishlistData | TransportData | CheckinData | CoffeeData | CoffeeSimpleData | FoodData | YoutubeData | QuoteData | MusicData | MakeupData | SkincareData
 
 interface Props {
   globalFont: string
@@ -181,6 +187,15 @@ function wrapMultiline(ctx: CanvasRenderingContext2D, text: string, maxW: number
   return result.slice(0, maxLines)
 }
 
+function wrapMultilineLoose(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
+  const result: string[] = []
+  for (const para of text.split('\n')) {
+    if (!para.trim()) { result.push(''); continue }
+    result.push(...wrap(ctx, para, maxW, 999))
+  }
+  return result
+}
+
 async function loadImg(src: string): Promise<HTMLImageElement> {
   return new Promise((res, rej) => {
     const img = new Image()
@@ -199,6 +214,41 @@ function toDataUrl(b64: string): string {
 function isColorDark(hex: string): boolean {
   const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16)
   return (r * 299 + g * 587 + b * 114) / 1000 < 128
+}
+
+function rgb(r: number, g: number, b: number, alpha?: number): string {
+  const rr = Math.max(0, Math.min(255, Math.round(r)))
+  const gg = Math.max(0, Math.min(255, Math.round(g)))
+  const bb = Math.max(0, Math.min(255, Math.round(b)))
+  return alpha == null ? `rgb(${rr}, ${gg}, ${bb})` : `rgba(${rr}, ${gg}, ${bb}, ${alpha})`
+}
+
+function matTone(r: number, g: number, b: number, lightness: number, alpha?: number): string {
+  const rn = r / 255, gn = g / 255, bn = b / 255
+  const max = Math.max(rn, gn, bn), min = Math.min(rn, gn, bn)
+  let h = 0
+  let s = 0
+  const l = (max + min) / 2
+  const d = max - min
+  if (d !== 0) {
+    s = d / (1 - Math.abs(2 * l - 1))
+    if (max === rn) h = ((gn - bn) / d + (gn < bn ? 6 : 0)) / 6
+    else if (max === gn) h = ((bn - rn) / d + 2) / 6
+    else h = ((rn - gn) / d + 4) / 6
+  }
+  const sat = Math.min(1, Math.max(0.22, s * 1.35))
+  const hue2rgb = (p: number, q: number, t: number) => {
+    if (t < 0) t += 1
+    if (t > 1) t -= 1
+    if (t < 1 / 6) return p + (q - p) * 6 * t
+    if (t < 1 / 2) return q
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6
+    return p
+  }
+  const ll = Math.max(0, Math.min(1, lightness))
+  const q = ll < 0.5 ? ll * (1 + sat) : ll + sat - ll * sat
+  const p = 2 * ll - q
+  return rgb(hue2rgb(p, q, h + 1 / 3) * 255, hue2rgb(p, q, h) * 255, hue2rgb(p, q, h - 1 / 3) * 255, alpha)
 }
 
 function drawCoverImg(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number) {
@@ -486,21 +536,32 @@ function drawReceipt(d: ReceiptData, font: string): { dataUrl: string; w: number
   const f = cf(font)
   const items = d.items.filter(i => i.name)
   const total = items.reduce((s, i) => s + (Number(i.price.replace(/[^0-9]/g, '')) || 0), 0)
-  const H = 20 + 20 + 16 + 12 + 20 + items.length * 22 + 10 + 14 + 24 + 22 + 14
+  const itemFont = `11px ${f}`
+  const nameCtx = measureCtx(itemFont)
+  const nameMaxW = W - pad * 2 - 66
+  const itemRows = items.map(item => wrapMultilineLoose(nameCtx, item.name, nameMaxW))
+  const itemLineH = 14
+  const itemGap = 8
+  const itemsH = itemRows.reduce((sum, lines) => sum + Math.max(1, lines.length) * itemLineH + itemGap, 0)
+  const H = 20 + 20 + 16 + 12 + 20 + itemsH + 10 + 14 + 24 + 22 + 14
   const [canvas, ctx] = mk(W, H)
 
-  ctx.fillStyle = '#FEFCF8'; ctx.fillRect(0, 0, W, H)
-
-  // 상단 지그재그
-  ctx.fillStyle = '#F0EDE6'
-  ctx.beginPath(); ctx.moveTo(0, 0)
-  for (let x = 0; x <= W; x += 10) { ctx.lineTo(x + 5, 8); ctx.lineTo(x + 10, 0) }
-  ctx.lineTo(W, 0); ctx.closePath(); ctx.fill()
-
-  // 하단 지그재그
-  ctx.beginPath(); ctx.moveTo(0, H)
-  for (let x = 0; x <= W; x += 10) { ctx.lineTo(x + 5, H - 8); ctx.lineTo(x + 10, H) }
-  ctx.lineTo(W, H); ctx.closePath(); ctx.fill()
+  const toothW = 12
+  const toothH = 5
+  ctx.fillStyle = '#FEFCF8'
+  ctx.beginPath()
+  ctx.moveTo(0, toothH)
+  for (let x = 0; x <= W; x += toothW) {
+    ctx.quadraticCurveTo(x + toothW / 4, 1, x + toothW / 2, toothH)
+    ctx.quadraticCurveTo(x + toothW * 0.75, toothH * 1.65, x + toothW, toothH)
+  }
+  ctx.lineTo(W, H - toothH)
+  for (let x = W; x >= 0; x -= toothW) {
+    ctx.quadraticCurveTo(x - toothW / 4, H - 1, x - toothW / 2, H - toothH)
+    ctx.quadraticCurveTo(x - toothW * 0.75, H - toothH * 1.65, x - toothW, H - toothH)
+  }
+  ctx.closePath()
+  ctx.fill()
 
   let y = 22
   ctx.fillStyle = '#1a1a1a'; ctx.font = `bold 14px ${f}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
@@ -511,20 +572,19 @@ function drawReceipt(d: ReceiptData, font: string): { dataUrl: string; w: number
   ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke()
   ctx.setLineDash([]); y += 12
 
-  ctx.font = `11px ${f}`
-  for (const item of items) {
+  ctx.font = itemFont
+  items.forEach((item, idx) => {
     ctx.fillStyle = '#333'; ctx.textAlign = 'left'
-    let name = item.name
-    while (name.length > 1 && ctx.measureText(name).width > W - pad * 2 - 60) name = name.slice(0, -1)
-    if (name !== item.name) name += '…'
-    ctx.fillText(name, pad, y)
-    ctx.fillStyle = '#555'; ctx.textAlign = 'right'; ctx.fillText(item.price || '0', W - pad, y); y += 22
-  }
+    const lines = itemRows[idx] ?? [item.name]
+    lines.forEach((line, lineIdx) => ctx.fillText(line, pad, y + lineIdx * itemLineH))
+    ctx.fillStyle = '#555'; ctx.textAlign = 'right'; ctx.fillText(item.price || '0', W - pad, y)
+    y += Math.max(1, lines.length) * itemLineH + itemGap
+  })
 
   y += 8; ctx.strokeStyle = '#333'; ctx.lineWidth = 1
   ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke(); y += 14
 
-  const curSym = CURRENCIES.find(c => c.code === (d.currency ?? 'KRW'))?.symbol ?? '₩'
+  const curSym = currencySymbol(d.currency, d.customCurrency)
   ctx.fillStyle = '#1a1a1a'; ctx.font = `bold 13px ${f}`
   ctx.textAlign = 'left'; ctx.fillText('합계', pad, y)
   ctx.textAlign = 'right'; ctx.fillText(`${curSym}${total.toLocaleString()}`, W - pad, y); y += 26
@@ -889,8 +949,11 @@ function drawCoffee(d: CoffeeData, font: string): { dataUrl: string; w: number; 
   const W = 264, pad = 16
   const f = cf(font)
   const cream = '#FDFBF7', ink = '#1A1A1A', muted = '#8B7D74', dimLine = '#DED5CB'
-  const hasNote = !!d.note
-  const H = hasNote ? 200 : 152
+  const hasNote = !!d.note.trim()
+  const noteCtx = measureCtx(`italic 10px ${f}`)
+  const noteLines = hasNote ? wrapMultilineLoose(noteCtx, `"${d.note}"`, W - pad * 2) : []
+  const noteLineH = 15
+  const H = 152 + (hasNote ? 11 + Math.max(1, noteLines.length) * noteLineH + 6 : 0)
   const [canvas, ctx] = mk(W, H)
 
   // 배경
@@ -995,11 +1058,67 @@ function drawCoffee(d: CoffeeData, font: string): { dataUrl: string; w: number; 
   // ── 테이스팅 노트 ──
   if (hasNote) {
     dashedLine(y); y += 11
-    const mc = measureCtx(`italic 10px ${f}`)
-    const noteLines = wrap(mc, `"${d.note}"`, W - pad * 2, 2)
     ctx.fillStyle = '#9C7B6B'; ctx.font = `italic 10px ${f}`
     ctx.textAlign = 'center'; ctx.textBaseline = 'top'
     noteLines.forEach((line, i) => ctx.fillText(line, W / 2, y + i * 15))
+  }
+
+  return { dataUrl: finish(canvas), w: W, h: H }
+}
+
+function drawCoffeeSimple(d: CoffeeSimpleData, font: string): { dataUrl: string; w: number; h: number } {
+  const W = 240, pad = 15
+  const f = cf(font)
+  const paper = '#FFFDF8', ink = '#2B2420', muted = '#9A8B7F', line = '#E8DDD2'
+  const noteCtx = measureCtx(`10px ${f}`)
+  const noteLines = d.note.trim() ? wrapMultilineLoose(noteCtx, d.note, W - pad * 2) : []
+  const moodLines = d.mood.trim() ? wrapMultilineLoose(measureCtx(`9px ${f}`), d.mood, W - pad * 2) : []
+  const H = 128 + moodLines.length * 12 + noteLines.length * 14
+  const [canvas, ctx] = mk(W, H)
+
+  ctx.fillStyle = paper; rrect(ctx, 0, 0, W, H, 12); ctx.fill()
+  ctx.strokeStyle = '#E7D8CA'; ctx.lineWidth = 0.8
+  rrect(ctx, 0.5, 0.5, W - 1, H - 1, 12); ctx.stroke()
+
+  ctx.fillStyle = '#F4E7D8'
+  rrect(ctx, pad, pad, 44, 44, 10); ctx.fill()
+  ctx.fillStyle = '#6F4A31'; ctx.font = `22px ${f}`
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+  ctx.fillText('☕', pad + 22, pad + 23)
+
+  ctx.fillStyle = muted; ctx.font = `bold 7px ${f}`
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+  ctx.fillText('COFFEE SCRAP', pad + 54, pad + 4)
+  ctx.fillStyle = ink; ctx.font = `bold 16px ${f}`
+  ctx.fillText(d.menu || '마신 커피', pad + 54, pad + 18)
+  ctx.fillStyle = muted; ctx.font = `9px ${f}`
+  ctx.fillText([d.shop || '카페/브랜드', d.date].filter(Boolean).join(' · '), pad + 54, pad + 39)
+
+  const badge = d.isIced ? 'ICE' : 'HOT'
+  const bx = W - pad - 32, by = pad + 2
+  ctx.fillStyle = d.isIced ? '#E3F2FD' : '#FFF3E0'
+  rrect(ctx, bx, by, 32, 16, 5); ctx.fill()
+  ctx.fillStyle = d.isIced ? '#1565C0' : '#BF360C'
+  ctx.font = `bold 7px ${f}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+  ctx.fillText(badge, bx + 16, by + 8)
+
+  let y = pad + 60
+  ctx.strokeStyle = line; ctx.lineWidth = 0.7
+  ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke()
+  y += 12
+
+  if (moodLines.length > 0) {
+    ctx.fillStyle = muted; ctx.font = `bold 7px ${f}`; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.fillText('MOOD', pad, y); y += 10
+    ctx.fillStyle = '#7D6C60'; ctx.font = `9px ${f}`
+    moodLines.forEach(lineText => { ctx.fillText(lineText, pad, y); y += 12 })
+    y += 4
+  }
+
+  if (noteLines.length > 0) {
+    ctx.fillStyle = muted; ctx.font = `bold 7px ${f}`; ctx.fillText('MEMO', pad, y); y += 10
+    ctx.fillStyle = ink; ctx.font = `10px ${f}`
+    noteLines.forEach(lineText => { ctx.fillText(lineText, pad, y); y += 14 })
   }
 
   return { dataUrl: finish(canvas), w: W, h: H }
@@ -1046,24 +1165,21 @@ function drawFood(d: FoodData, font: string, imgs: Imgs): { dataUrl: string; w: 
   const brightness = (r * 299 + g * 587 + b * 114) / 1000
   const isDark = brightness < 100
 
-  let ink: string, muted: string, coral: string, dateClr: string, strokeClr: string
+  let ink: string, muted: string, coral: string, dateClr: string, strokeClr: string, placeholderClr: string
   if (isDark) {
     ink       = '#FFFFFF'
     muted     = 'rgba(255,255,255,0.95)'
     coral     = 'rgba(255,255,255,0.95)'
     dateClr   = 'rgba(255,255,255,0.9)'
     strokeClr = 'rgba(0,0,0,0.2)'
+    placeholderClr = 'rgba(255,255,255,0.78)'
   } else {
-    const max = Math.max(r, g, b) || 1
-    const rN = Math.pow(r / max, 1.5)
-    const gN = Math.pow(g / max, 1.5)
-    const bN = Math.pow(b / max, 1.5)
-    const dc = (factor: number) => `rgb(${Math.floor(rN * 255 * factor)}, ${Math.floor(gN * 255 * factor)}, ${Math.floor(bN * 255 * factor)})`
-    ink       = dc(0.35)
-    muted     = dc(0.55)
-    coral     = dc(0.5)
-    dateClr   = `rgba(${Math.floor(rN * 255 * 0.5)}, ${Math.floor(gN * 255 * 0.5)}, ${Math.floor(bN * 255 * 0.5)}, 0.6)`
+    ink       = matTone(r, g, b, 0.40)
+    muted     = matTone(r, g, b, 0.50)
+    coral     = matTone(r, g, b, 0.35)
+    dateClr   = matTone(r, g, b, 0.34, 0.74)
     strokeClr = 'rgba(255,255,255,0.3)'
+    placeholderClr = matTone(r, g, b, 0.42, 0.3)
   }
 
   // ── 배경 (테이블 매트) ──
@@ -1145,11 +1261,17 @@ function drawFood(d: FoodData, font: string, imgs: Imgs): { dataUrl: string; w: 
   if (imgs.photo) {
     drawCoverImg(ctx, imgs.photo, plateCX - innerR, plateCY - innerR, innerR * 2, innerR * 2)
   } else {
-    ctx.fillStyle = '#FFE8D0'
+    ctx.fillStyle = '#F9F9F9'
     ctx.fillRect(plateCX - innerR, plateCY - innerR, innerR * 2, innerR * 2)
-    ctx.fillStyle = '#D4A882'; ctx.font = `9px ${f}`
+    const placeholder = d.photoPlaceholder ?? '사진을 추가해보세요'
+    const placeholderSize = Math.max(6, Math.min(18, Number(d.photoPlaceholderSize) || 9))
+    const pc = measureCtx(`${placeholderSize}px ${f}`)
+    const placeholderLines = wrapMultiline(pc, placeholder, innerR * 1.55, 3)
+    ctx.fillStyle = placeholderClr; ctx.font = `${placeholderSize}px ${f}`
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText('사진을 추가해보세요', plateCX, plateCY)
+    const lineH = placeholderSize * 1.35
+    const startY = plateCY - ((placeholderLines.length - 1) * lineH) / 2
+    placeholderLines.forEach((lineText, i) => ctx.fillText(lineText, plateCX, startY + i * lineH))
   }
   ctx.restore()
 
@@ -1691,6 +1813,7 @@ const TEMPLATES_BY_CAT: Record<Category, { id: TemplateId; emoji: string; label:
   ],
   food:    [
     { id: 'coffee',    emoji: '☕', label: '커피',          desc: '드립 기록 · 테이스팅' },
+    { id: 'coffee_simple', emoji: '☕', label: '커피 스크랩', desc: '가볍게 마신 커피' },
     { id: 'food_note', emoji: '🍴', label: '먹은 것',       desc: '접시 모양 카드' },
   ],
   archive: [
@@ -1711,12 +1834,13 @@ function defaultData(id: TemplateId, tplDef: Record<string, string> = {}): AnyDa
     case 'baseball':  return { bgImageB64: '', away: '', homeScore: '', awayScore: '', venue: '', date: today, seat: '', memo: '', isAway: false, homeTeam: '삼성 라이온즈' }
     case 'ticket':    return { category: '영화', title: '', date: today, time: '', venue: '', seat: '', price: '', photoB64: '' }
     case 'game':      return { screenshotB64: '', title: '', date: today, oneiner: '', frameColor: '#f9f8f6', frameBgB64: '' }
-    case 'receipt':   return { store: '', date: today, items: [{ name: '', price: '' }], footer: '감사합니다 ✦', currency: 'KRW' }
+    case 'receipt':   return { store: '', date: today, items: [{ name: '', price: '' }], footer: '감사합니다 ✦', currency: 'KRW', customCurrency: '' }
     case 'wishlist':  return { item: '', price: '', wishScore: 3, photoB64: '', oneiner: '', date: today, link: '' }
     case 'transport': return { type: 'KTX', typeLabel: '', from: '', to: '', date: today, departureTime: '', vehicleNumber: '', seat: '', price: '' }
     case 'checkin':   return { place: '', category: '', address: '', date: today, rating: 4.5, purpose: '', companions: '', memo: '', link: '' }
     case 'coffee':    return { roastery: '', bean: '', isIced: false, equipment: '', beanGrams: '', waterMl: '', brewTime: '', note: '' }
-    case 'food_note': return { dish: '', restaurant: '', photoB64: '', date: today, comment: '', matColor: '#FDEBD0', matImageB64: '' }
+    case 'coffee_simple': return { shop: '', menu: '', date: today, isIced: false, mood: '', note: '' }
+    case 'food_note': return { dish: '', restaurant: '', photoB64: '', date: today, comment: '', matColor: '#FDEBD0', matImageB64: '', photoPlaceholder: '사진을 추가해보세요', photoPlaceholderSize: '9' }
     case 'youtube':   return { url: '', title: '', channel: '', thumbnailB64: '', channelAvatarB64: '', impression: '', date: today, duration: '' }
     case 'quote':     return { text: '', source: '', author: '', memo: '', layout: 'quote' }
     case 'music':     return { title: '', artist: '', albumArtB64: '', lyric: '' }
@@ -2056,6 +2180,7 @@ function generate(id: TemplateId, data: AnyData, font: string, imgs: Imgs, profi
     case 'transport': return drawTransport(data as TransportData, font)
     case 'checkin':   return drawCheckin(data as CheckinData, font)
     case 'coffee':    return drawCoffee(data as CoffeeData, font)
+    case 'coffee_simple': return drawCoffeeSimple(data as CoffeeSimpleData, font)
     case 'food_note': return drawFood(data as FoodData, font, imgs)
     case 'youtube':   return drawYoutube(data as YoutubeData, font, imgs, profileName)
     case 'quote':     return drawQuote(data as QuoteData, font)
@@ -2086,20 +2211,40 @@ function F({ label, value, onChange, placeholder = '' }: { label: string; value:
   )
 }
 
+function TA({ label, value, onChange, placeholder = '', rows = 3 }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; rows?: number }) {
+  return (
+    <div style={{ marginBottom: 9 }}>
+      <div style={lbl}>{label}</div>
+      <textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={rows}
+        style={{ ...inp, resize: 'vertical', lineHeight: 1.45 }} />
+    </div>
+  )
+}
+
 function PriceF({ label, value, onChange, placeholder = '' }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
   const parsed = parsePriceValue(value)
   const [code, setCode] = useState(parsed.code || 'KRW')
   const [amount, setAmount] = useState(parsed.amount)
+  const [customUnit, setCustomUnit] = useState('')
 
   useEffect(() => {
     if (parsed.code) return
-    api.settings.get('defaultCurrency').then(v => {
-      if (v) setCode(v)
+    Promise.all([
+      api.settings.get('defaultCurrency').catch(() => null),
+      api.settings.get('customPriceUnit').catch(() => null),
+    ]).then(([cur, custom]) => {
+      if (custom) setCustomUnit(custom)
+      if (custom && value.startsWith(custom)) {
+        setCode('CUSTOM')
+        setAmount(value.slice(custom.length))
+      } else if (cur) {
+        setCode(cur)
+      }
     }).catch(() => {})
   }, [])
 
   const emit = (c: string, a: string) => {
-    const sym = CURRENCIES.find(x => x.code === c)?.symbol ?? ''
+    const sym = currencySymbol(c, customUnit)
     onChange(a ? sym + a : '')
   }
 
@@ -2109,8 +2254,9 @@ function PriceF({ label, value, onChange, placeholder = '' }: { label: string; v
       <div style={{ display: 'flex', gap: 4 }}>
         <select value={code}
           onChange={e => { setCode(e.target.value); emit(e.target.value, amount) }}
-          style={{ ...inp, width: 54, flexShrink: 0, paddingLeft: 4, paddingRight: 2, cursor: 'pointer' }}>
+          style={{ ...inp, width: 64, flexShrink: 0, paddingLeft: 4, paddingRight: 2, cursor: 'pointer' }}>
           {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.symbol}</option>)}
+          {customUnit && <option value="CUSTOM">{customUnit}</option>}
         </select>
         <input value={amount}
           onChange={e => { setAmount(e.target.value); emit(code, e.target.value) }}
@@ -2306,7 +2452,13 @@ function ReceiptForm({ d, u }: { d: ReceiptData; u: (p: Partial<ReceiptData>) =>
   const setItem = (i: number, p: Partial<ReceiptItem>) =>
     u({ items: d.items.map((it, idx) => idx === i ? { ...it, ...p } : it) })
   const currency = d.currency ?? 'KRW'
-  const curSym = CURRENCIES.find(c => c.code === currency)?.symbol ?? '₩'
+  const [customUnit, setCustomUnit] = useState(d.customCurrency ?? '')
+  useEffect(() => {
+    api.settings.get('customPriceUnit').then(v => {
+      if (v && !d.customCurrency) setCustomUnit(v)
+    }).catch(() => {})
+  }, [])
+  const curSym = currencySymbol(currency, d.customCurrency || customUnit)
   return <>
     <Row>
       <F label="가게 이름" value={d.store} onChange={v => u({ store: v })} placeholder="집" />
@@ -2317,7 +2469,14 @@ function ReceiptForm({ d, u }: { d: ReceiptData; u: (p: Partial<ReceiptData>) =>
       <select value={currency} onChange={e => u({ currency: e.target.value })}
         style={{ ...inp, width: '100%', cursor: 'pointer' }}>
         {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+        {(customUnit || d.customCurrency) && <option value="CUSTOM">사용자 단위 ({d.customCurrency || customUnit})</option>}
       </select>
+      {currency === 'CUSTOM' && (
+        <input value={d.customCurrency || customUnit}
+          onChange={e => { setCustomUnit(e.target.value); u({ customCurrency: e.target.value }) }}
+          placeholder="예: 포인트, 알, 잔"
+          style={{ ...inp, marginTop: 6 }} />
+      )}
     </div>
     <div style={{ marginBottom: 8 }}>
       <div style={lbl}>항목</div>
@@ -2460,7 +2619,36 @@ function CoffeeForm({ d, u }: { d: CoffeeData; u: (p: Partial<CoffeeData>) => vo
         </div>
       </div>
     </div>
-    <F label="테이스팅 노트 (선택)" value={d.note} onChange={v => u({ note: v })} placeholder="산미 있고 은은한 꽃향기" />
+    <TA label="테이스팅 노트 (선택)" value={d.note} onChange={v => u({ note: v })} placeholder={'산미 있고 은은한 꽃향기\n복숭아, 흰 꽃, 긴 여운'} rows={4} />
+  </>
+}
+
+function CoffeeSimpleForm({ d, u }: { d: CoffeeSimpleData; u: (p: Partial<CoffeeSimpleData>) => void }) {
+  return <>
+    <Row>
+      <F label="카페 / 브랜드" value={d.shop} onChange={v => u({ shop: v })} placeholder="동네 카페" />
+      <F label="날짜" value={d.date} onChange={v => u({ date: v })} placeholder="2026.05.28" />
+    </Row>
+    <F label="마신 커피" value={d.menu} onChange={v => u({ menu: v })} placeholder="아이스 라떼" />
+    <div style={{ marginBottom: 10 }}>
+      <div style={lbl}>온도</div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {([false, true] as const).map(iced => (
+          <button key={String(iced)} onClick={() => u({ isIced: iced })}
+            style={{
+              flex: 1, padding: '6px 0', borderRadius: 8, border: '1.5px solid',
+              borderColor: d.isIced === iced ? (iced ? '#1565C0' : '#BF360C') : '#E0E0E0',
+              background: d.isIced === iced ? (iced ? '#E3F2FD' : '#FFF3E0') : '#fafafa',
+              color: d.isIced === iced ? (iced ? '#1565C0' : '#BF360C') : '#999',
+              fontWeight: d.isIced === iced ? 700 : 400, fontSize: 12, cursor: 'pointer',
+            }}>
+            {iced ? '❄ ICE' : '♨ HOT'}
+          </button>
+        ))}
+      </div>
+    </div>
+    <F label="무드 / 상황 (선택)" value={d.mood} onChange={v => u({ mood: v })} placeholder="출근길에 빠르게" />
+    <TA label="메모 (선택)" value={d.note} onChange={v => u({ note: v })} placeholder={'오늘은 고소하고 부드러웠다.\n잠깐 쉬어가기 좋았음.'} rows={3} />
   </>
 }
 
@@ -2962,6 +3150,7 @@ export default function TemplateModal({ globalFont, systemFonts, onConfirm, onCa
             {templateId === 'transport' && <TransportForm d={data as TransportData} u={p => upd(p as Partial<AnyData>)} />}
             {templateId === 'checkin'   && <CheckinForm   d={data as CheckinData}   u={p => upd(p as Partial<AnyData>)} />}
             {templateId === 'coffee'    && <CoffeeForm    d={data as CoffeeData}    u={p => upd(p as Partial<AnyData>)} />}
+            {templateId === 'coffee_simple' && <CoffeeSimpleForm d={data as CoffeeSimpleData} u={p => upd(p as Partial<AnyData>)} />}
             {templateId === 'food_note' && <FoodForm      d={data as FoodData}      u={p => upd(p as Partial<AnyData>)} />}
             {templateId === 'youtube'   && <YoutubeForm   d={data as YoutubeData}   u={p => upd(p as Partial<AnyData>)} />}
             {templateId === 'quote'     && <QuoteForm     d={data as QuoteData}     u={p => upd(p as Partial<AnyData>)} />}

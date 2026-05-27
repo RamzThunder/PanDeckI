@@ -445,6 +445,69 @@ pub fn list_system_fonts() -> Vec<String> {
     list_fonts_impl()
 }
 
+#[cfg(target_os = "macos")]
+fn font_data_url_impl(font_name: &str) -> Result<Option<String>, String> {
+    let script = r#"
+import json
+import sys
+from AppKit import NSFontManager
+from CoreText import CTFontCreateWithName, CTFontCopyAttribute, kCTFontURLAttribute
+
+family = sys.argv[1]
+fm = NSFontManager.sharedFontManager()
+members = fm.availableMembersOfFontFamily_(family) or []
+postscript = None
+for m in members:
+    style = str(m[1]).lower() if len(m) > 1 else ''
+    if 'regular' in style or 'normal' in style:
+        postscript = str(m[0])
+        break
+if not postscript and members:
+    postscript = str(members[0][0])
+if not postscript:
+    postscript = family
+
+font = CTFontCreateWithName(postscript, 12, None)
+url = CTFontCopyAttribute(font, kCTFontURLAttribute)
+print(json.dumps(str(url.path()) if url else None))
+"#;
+    let output = std::process::Command::new("python3")
+        .args(["-c", script, font_name])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    let stdout = String::from_utf8(output.stdout).map_err(|e| e.to_string())?;
+    let path: Option<String> = serde_json::from_str(stdout.trim()).map_err(|e| e.to_string())?;
+    let Some(path) = path else { return Ok(None) };
+    let data = fs::read(&path).map_err(|e| e.to_string())?;
+    let ext = std::path::Path::new(&path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("otf")
+        .to_lowercase();
+    let mime = match ext.as_str() {
+        "ttf" => "font/ttf",
+        "ttc" => "font/collection",
+        "woff" => "font/woff",
+        "woff2" => "font/woff2",
+        _ => "font/otf",
+    };
+    let b64 = general_purpose::STANDARD.encode(&data);
+    Ok(Some(format!("data:{};base64,{}", mime, b64)))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn font_data_url_impl(_font_name: &str) -> Result<Option<String>, String> {
+    Ok(None)
+}
+
+#[command]
+pub fn font_data_url(font_name: String) -> Result<Option<String>, String> {
+    font_data_url_impl(&font_name)
+}
+
 // ── Window ────────────────────────────────────────────────────────────────────
 
 #[command]
@@ -813,6 +876,22 @@ pub fn capture_screenshot_to(app: AppHandle, path: String) -> Result<(), String>
 pub fn capture_screenshot_b64(app: AppHandle) -> Result<String, String> {
     let tmp = std::env::temp_dir().join("dida_preview_tmp.png");
     capture_window_to_file(&app, &tmp)?;
+    let bytes = fs::read(&tmp).map_err(|e| e.to_string())?;
+    fs::remove_file(&tmp).ok();
+    Ok(general_purpose::STANDARD.encode(&bytes))
+}
+
+#[command]
+pub fn capture_region_b64(app: AppHandle, x: f64, y: f64, w: f64, h: f64) -> Result<String, String> {
+    let win = app.get_webview_window("main").ok_or("window not found")?;
+    let scale = win.scale_factor().map_err(|e| e.to_string())?;
+    let inner = win.inner_position().map_err(|e| e.to_string())?;
+    let lx = (inner.x as f64 / scale + x).round() as i32;
+    let ly = (inner.y as f64 / scale + y).round() as i32;
+    let lw = w.round().max(1.0) as u32;
+    let lh = h.round().max(1.0) as u32;
+    let tmp = std::env::temp_dir().join("dida_region_tmp.png");
+    screenshot_region(lx, ly, lw, lh, tmp.to_str().ok_or("invalid temp path")?)?;
     let bytes = fs::read(&tmp).map_err(|e| e.to_string())?;
     fs::remove_file(&tmp).ok();
     Ok(general_purpose::STANDARD.encode(&bytes))

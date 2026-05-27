@@ -66,6 +66,9 @@ export const api = {
   fonts: {
     async list(): Promise<string[]> {
       return invoke('list_system_fonts')
+    },
+    async dataUrl(fontName: string): Promise<string | null> {
+      return invoke<string | null>('font_data_url', { fontName })
     }
   },
   shell: {
@@ -91,6 +94,12 @@ export const api = {
         requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
       )
       return invoke<string>('capture_screenshot_b64')
+    },
+    async captureRegionB64(rect: { x: number; y: number; w: number; h: number }): Promise<string> {
+      await new Promise<void>(resolve =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      )
+      return invoke<string>('capture_region_b64', rect)
     },
     async captureScreenshot(): Promise<void> {
       const path = await dialogSave({ title: 'PNG로 내보내기', filters: [{ name: 'PNG 이미지', extensions: ['png'] }] })

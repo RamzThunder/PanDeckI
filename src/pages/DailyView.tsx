@@ -6,6 +6,7 @@ import StickerPicker from '../components/StickerPicker'
 import CropModal, { CustomShape } from '../components/CropModal'
 import TemplateModal from '../components/TemplateModal'
 import ReactMarkdown from 'react-markdown'
+import { toPng } from 'html-to-image'
 interface Props {
   currentDate: Date
   onPrev: () => void
@@ -72,6 +73,7 @@ interface MultiResizeOp  { kind: 'multiresize';  ids: string[]; sx: number; sy: 
 type ActiveOp = DragOp | ResizeOp | RotateOp | MultiDragOp | MarqueeOp | MultiResizeOp
 
 const DEFAULT_DATA: DailyData = { elements: [], bg: '#FFF8F0' }
+const fontDataUrlCache = new Map<string, string | null>()
 
 function getGhostMode(el: CanvasEl): 'exclude' | 'mosaic' | 'blur' | undefined {
   return el.ghostMode ?? (el.isGhost ? 'exclude' : undefined)
@@ -283,6 +285,117 @@ function rrect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h
 function photoRadiusPx(w: number, h: number, radius = 0): number {
   const pct = Math.max(0, Math.min(50, radius))
   return Math.round(Math.min(w, h) * pct / 100)
+}
+
+function primaryFontFamily(fontFamily: string): string {
+  return fontFamily.split(',')[0]?.replace(/^['"]|['"]$/g, '').trim() || 'sans-serif'
+}
+
+function canvasTextFont(el: CanvasEl): string {
+  const primary = primaryFontFamily(el.fontFamily)
+  const fallback = el.fontFamily.includes(',') ? `,${el.fontFamily.split(',').slice(1).join(',')}` : ', sans-serif'
+  return `${el.italic ? 'italic ' : ''}${el.bold ? 'bold ' : ''}${el.fontSize}px "${primary}"${fallback}`
+}
+
+function cssEscapeString(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+}
+
+async function ensureEmbeddedFontFaces(elements: CanvasEl[]): Promise<HTMLStyleElement | null> {
+  const names = Array.from(new Set(
+    elements
+      .filter(el => el.type === 'text')
+      .map(el => primaryFontFamily(el.fontFamily))
+      .filter(Boolean)
+  ))
+  if (names.length === 0) return null
+  const entries = await Promise.all(names.map(async name => {
+    if (!fontDataUrlCache.has(name)) {
+      const dataUrl = await api.fonts.dataUrl(name).catch(() => null)
+      fontDataUrlCache.set(name, dataUrl)
+    }
+    return [name, fontDataUrlCache.get(name)] as const
+  }))
+  const style = document.createElement('style')
+  style.textContent = entries.map(([name, dataUrl]) => {
+    const safe = cssEscapeString(name)
+    const src = dataUrl ? `url("${dataUrl}")` : `local("${safe}")`
+    return `@font-face{font-family:"${safe}";src:${src};font-display:block;}`
+  }).join('\n')
+  document.head.appendChild(style)
+  return style
+}
+
+async function ensureCanvasFonts(elements: CanvasEl[]) {
+  const fonts = 'fonts' in document ? document.fonts : undefined
+  const textEls = elements.filter(el => el.type === 'text')
+  const preloadEls = textEls.map(el => {
+    const div = document.createElement('div')
+    div.style.cssText = `font-family:${el.fontFamily};font-size:${Math.max(72, el.fontSize)}px;font-weight:${el.bold ? 'bold' : 'normal'};font-style:${el.italic ? 'italic' : 'normal'};position:fixed;top:0;left:0;width:1px;height:1px;overflow:hidden;opacity:0.01;pointer-events:none;z-index:-9999;`
+    div.textContent = `${el.content || '가나다라마바사ABCDEFGabcdefg0123456789'}`
+    document.body.appendChild(div)
+    void div.offsetWidth
+    return div
+  })
+  if (fonts) {
+    await Promise.all(textEls.map(el => fonts.load(canvasTextFont(el)).catch(() => [])))
+    await fonts.ready
+  }
+  await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 50))))
+  preloadEls.forEach(el => { try { document.body.removeChild(el) } catch {} })
+}
+
+async function renderTextElementPng(el: CanvasEl): Promise<string> {
+  const pad = el.textPadding ?? 6
+  const bw = el.borderWidth ?? 0
+  const textRad = el.textRadius ?? 0
+  const justifyV = el.alignV === 'middle' ? 'center' : el.alignV === 'bottom' ? 'flex-end' : 'flex-start'
+  const box = document.createElement('div')
+  box.style.cssText = [
+    `position:fixed`,
+    `left:0`,
+    `top:0`,
+    `width:${el.w}px`,
+    `height:${el.h}px`,
+    `display:flex`,
+    `flex-direction:column`,
+    `justify-content:${justifyV}`,
+    `background:${hexToRgba(el.bgColor, el.bgOpacity)}`,
+    `padding:${pad}px`,
+    `border-radius:${textRad}px`,
+    `border:${bw > 0 ? `${bw}px solid ${el.borderColor ?? '#333333'}` : 'none'}`,
+    `box-sizing:border-box`,
+    `overflow:hidden`,
+    `pointer-events:none`,
+    `z-index:-1`,
+  ].join(';')
+
+  const text = document.createElement('div')
+  text.textContent = el.content
+  text.style.cssText = [
+    `font-size:${el.fontSize}px`,
+    `color:${el.color}`,
+    `font-weight:${el.bold ? 'bold' : 'normal'}`,
+    `font-style:${el.italic ? 'italic' : 'normal'}`,
+    `text-decoration:${[el.underline && 'underline', el.strikethrough && 'line-through'].filter(Boolean).join(' ') || 'none'}`,
+    `letter-spacing:${el.letterSpacing ?? 0}px`,
+    `line-height:${el.lineHeight ?? 1.4}`,
+    `font-family:${el.fontFamily}`,
+    `text-align:${el.align}`,
+    `white-space:pre-wrap`,
+    `word-break:break-word`,
+    `transform:${(el.scaleX ?? 100) !== 100 ? `scaleX(${(el.scaleX ?? 100) / 100})` : 'none'}`,
+    `transform-origin:${el.align === 'center' ? 'center top' : el.align === 'right' ? 'right top' : 'left top'}`,
+  ].join(';')
+
+  box.appendChild(text)
+  document.body.appendChild(box)
+  try {
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    return await toPng(box, { pixelRatio: 2 })
+  } finally {
+    try { document.body.removeChild(box) } catch {}
+  }
 }
 
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] {
@@ -611,6 +724,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
   const persistRef    = useRef<(d: DailyData) => Promise<void>>(() => Promise.resolve())
   const exportRef     = useRef<() => Promise<void>>(() => Promise.resolve())
   const [exportPreview, setExportPreview] = useState<{ dataUrl: string; filename: string; privacy: boolean } | null>(null)
+  const [capturePrivacy, setCapturePrivacy] = useState<boolean | null>(null)
   const [youtubePort, setYoutubePort] = useState(0)
   const historyRef    = useRef<DailyData[]>([])
   const historyIdxRef = useRef(-1)
@@ -788,41 +902,53 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
     const ctx = offscreen.getContext('2d')!
     ctx.scale(dpr, dpr)
     const d = dataRef.current
-    ctx.fillStyle = d.bg; ctx.fillRect(0, 0, W, H)
-    if (d.bgImage) {
-      try {
-        const img = await loadImg(d.bgImage)
-        const rot = d.bgImageRotation ?? 0
-        const userScale = d.bgImageScale ?? 1
-        const isCover = d.bgImageFit === 'cover'
-        let dw = img.naturalWidth
-        let dh = img.naturalHeight
-        if (isCover) {
-          const is90or270 = rot === 90 || rot === 270
-          const targetW = is90or270 ? H : W
-          const targetH = is90or270 ? W : H
-          const ir = img.naturalWidth / img.naturalHeight
-          const tr = targetW / targetH
-          if (ir > tr) { dh = targetH; dw = targetH * ir }
-          else { dw = targetW; dh = targetW / ir }
-        }
-        dw *= userScale; dh *= userScale
-        ctx.save()
-        ctx.translate(W / 2, H / 2)
-        ctx.rotate((rot * Math.PI) / 180)
-        ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh)
-        ctx.restore()
-      } catch {}
-    }
-    for (const el of [...d.elements].filter(el => !privacy || getGhostMode(el) !== 'exclude').sort((a, b) => a.z - b.z)) {
+    const localFontFaces = await ensureEmbeddedFontFaces(d.elements)
+    try {
+      await ensureCanvasFonts(d.elements)
+      ctx.fillStyle = d.bg; ctx.fillRect(0, 0, W, H)
+      if (d.bgImage) {
+        try {
+          const img = await loadImg(d.bgImage)
+          const rot = d.bgImageRotation ?? 0
+          const userScale = d.bgImageScale ?? 1
+          const isCover = d.bgImageFit === 'cover'
+          let dw = img.naturalWidth
+          let dh = img.naturalHeight
+          if (isCover) {
+            const is90or270 = rot === 90 || rot === 270
+            const targetW = is90or270 ? H : W
+            const targetH = is90or270 ? W : H
+            const ir = img.naturalWidth / img.naturalHeight
+            const tr = targetW / targetH
+            if (ir > tr) { dh = targetH; dw = targetH * ir }
+            else { dw = targetW; dh = targetW / ir }
+          }
+          dw *= userScale; dh *= userScale
+          ctx.save()
+          ctx.translate(W / 2, H / 2)
+          ctx.rotate((rot * Math.PI) / 180)
+          ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh)
+          ctx.restore()
+        } catch {}
+      }
+      for (const el of [...d.elements].filter(el => !privacy || getGhostMode(el) !== 'exclude').sort((a, b) => a.z - b.z)) {
       if (el.type === 'video') continue
       const gm = privacy ? getGhostMode(el) : undefined
       ctx.save()
       ctx.globalAlpha = el.opacity / 100
       ctx.translate(el.x + el.w / 2, el.y + el.h / 2)
       ctx.rotate((el.rotation * Math.PI) / 180)
+      ctx.scale(el.flipH ? -1 : 1, el.flipV ? -1 : 1)
       ctx.translate(-el.w / 2, -el.h / 2)
       if (el.type === 'text') {
+        let renderedByDom = false
+        try {
+          const textPng = await renderTextElementPng(el)
+          const textImg = await loadImg(textPng)
+          ctx.drawImage(textImg, 0, 0, el.w, el.h)
+          renderedByDom = true
+        } catch {}
+        if (!renderedByDom) {
         if (el.bgOpacity > 0) {
           ctx.fillStyle = hexToRgba(el.bgColor, el.bgOpacity)
           const rad = el.textRadius ?? 0
@@ -840,7 +966,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
         const pad = el.textPadding ?? 6, fs = el.fontSize
         const lh = fs * (el.lineHeight ?? 1.4)
         const sx = (el.scaleX ?? 100) / 100
-        ctx.font = `${el.italic ? 'italic ' : ''}${el.bold ? 'bold ' : ''}${fs}px ${el.fontFamily}`
+        ctx.font = canvasTextFont(el)
         ;(ctx as any).letterSpacing = `${el.letterSpacing ?? 0}px`
         ctx.fillStyle = el.color; ctx.textBaseline = 'top'
         ctx.textAlign = el.align as CanvasTextAlign
@@ -875,6 +1001,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
             ctx.restore()
           }
         })
+        }
       } else if (el.type === 'sticker' || el.type === 'photo') {
         try {
           const img = await loadImg(el.content)
@@ -917,12 +1044,31 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
       ctx.restore()
       if (gm === 'mosaic') applyMosaicExport(ctx, offscreen, el.x, el.y, el.w, el.h, dpr, mosaicIntensity)
       if (gm === 'blur')   applyBlurExport(ctx, offscreen, el.x, el.y, el.w, el.h, dpr, blurIntensity)
+      }
+      return offscreen.toDataURL('image/png')
+    } finally {
+      if (localFontFaces) {
+        try { document.head.removeChild(localFontFaces) } catch {}
+      }
     }
-    return offscreen.toDataURL('image/png')
   }, [customShapes, mosaicIntensity, blurIntensity])
 
+  const buildCaptureDataUrl = useCallback(async (privacy: boolean): Promise<string> => {
+    const canvasEl = canvasRef.current
+    if (!canvasEl) return ''
+    setCapturePrivacy(privacy)
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    const rect = canvasEl.getBoundingClientRect()
+    try {
+      const b64 = await api.export.captureRegionB64({ x: rect.left, y: rect.top, w: rect.width, h: rect.height })
+      return `data:image/png;base64,${b64}`
+    } finally {
+      setCapturePrivacy(null)
+    }
+  }, [])
+
   const exportToPNG = useCallback(async () => {
-    const dataUrl = await buildExportDataUrl(true)
+    const dataUrl = await buildCaptureDataUrl(true).catch(() => buildExportDataUrl(true))
     if (!dataUrl) return
     const now = new Date()
     const yy  = String(now.getFullYear()).slice(2)
@@ -933,7 +1079,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
     const safeName = (diaryName || 'dida').replace(/\s+/g, '_')
     const filename = `${safeName}_${yy}${mm}${dd}_${hh}${min}.png`
     setExportPreview({ dataUrl, filename, privacy: true })
-  }, [buildExportDataUrl, diaryName])
+  }, [buildCaptureDataUrl, buildExportDataUrl, diaryName])
   exportRef.current = exportToPNG
 
   useEffect(() => {
@@ -1571,14 +1717,14 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
           </button>
           {showVideoMenu && (
             <div className="absolute top-full left-0 mt-1 z-50 rounded-xl shadow-xl overflow-hidden"
-              style={{ background: '#fff', border: '1px solid var(--color-border)', minWidth: 150 }}
+              style={{ background: '#fff', border: '1px solid var(--color-border)', width: 'max-content', minWidth: 'max-content' }}
               onClick={e => e.stopPropagation()}>
               {!showVideoUrlInput ? (<>
                 <button onClick={() => setShowVideoUrlInput(true)}
-                  className="w-full text-left text-xs px-3 py-2 hover:bg-pink-50"
+                  className="daily-menu-item text-left text-xs px-3 py-2 whitespace-nowrap"
                   style={{ color: 'var(--color-text)' }}>링크로 추가</button>
                 <button onClick={addVideoLocal}
-                  className="w-full text-left text-xs px-3 py-2 hover:bg-pink-50"
+                  className="daily-menu-item text-left text-xs px-3 py-2 whitespace-nowrap"
                   style={{ color: 'var(--color-text)', borderTop: '1px solid var(--color-border)' }}>로컬 영상 추가</button>
               </>) : (
                 <div className="p-2 flex flex-col gap-1.5">
@@ -1720,7 +1866,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
         onPointerDown={startMarquee}>
 
         {/* Grid overlay */}
-        {showGrid && (
+        {showGrid && capturePrivacy === null && (
           <div style={{
             position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 9998,
             backgroundImage: 'linear-gradient(to right, rgba(100,100,200,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(100,100,200,0.12) 1px, transparent 1px)',
@@ -1749,7 +1895,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
           )
         })()}
 
-        {[...data.elements].sort((a, b) => a.z - b.z).map(el => {
+        {[...data.elements].filter(el => !(capturePrivacy === true && getGhostMode(el) === 'exclude')).sort((a, b) => a.z - b.z).map(el => {
           const isSel  = el.id === selectedId
           const isEdit = el.id === editingId
           const clipStyle = el.type === 'photo' ? getPhotoClipStyle(el.clipShape, customShapes) : {}
@@ -1757,6 +1903,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
           const textRad = el.textRadius ?? 0
           const bw = el.borderWidth ?? 0
           const gm = getGhostMode(el)
+          const privacyPreview = capturePrivacy ?? ghostPreview
           const interactiveUrl: string | null =
             el.type === 'video' && el.videoType === 'embed' ? el.content :
             el.type === 'card' && el.cardType === 'tweet' ? (el.cardData?.url ?? null) :
@@ -1767,7 +1914,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
               style={{
                 position: 'absolute', left: el.x, top: el.y, width: el.w, height: el.h, zIndex: el.z,
                 transform: `rotate(${el.rotation}deg) scaleX(${el.flipH ? -1 : 1}) scaleY(${el.flipV ? -1 : 1})`,
-                outline: (isSel || multiIds.includes(el.id)) ? '2px solid var(--color-primary-dark)' : '2px solid transparent',
+                outline: capturePrivacy === null && (isSel || multiIds.includes(el.id)) ? '2px solid var(--color-primary-dark)' : '2px solid transparent',
                 outlineOffset: 2,
                 cursor: isEdit ? 'default' : el.locked ? 'default' : 'move',
               }}
@@ -1797,7 +1944,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                 borderRadius: el.type === 'photo'
                   ? (el.clipShape === 'none' ? `${photoRadiusPx(el.w, el.h, el.photoRadius)}px` : 0)
                   : (el.type === 'text' || el.type === 'markdown') ? `${textRad}px` : 0,
-                filter: ghostPreview && gm === 'blur' ? `blur(${blurIntensity}px)` : ghostPreview && gm === 'mosaic' ? "url('#pixelate-filter')" : undefined,
+                filter: privacyPreview && gm === 'blur' ? `blur(${blurIntensity}px)` : privacyPreview && gm === 'mosaic' ? "url('#pixelate-filter')" : undefined,
               }}>
                 {el.type === 'text' && (
                   isEdit ? (
@@ -1926,7 +2073,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                 {interactiveUrl && el.type !== 'video' && <InteractiveOverlay url={interactiveUrl} cmdHeld={cmdHeld} />}
               </div>
 
-              {isSel && !isEdit && (<>
+              {capturePrivacy === null && isSel && !isEdit && (<>
                 <div onPointerDown={e => startRotate(e, el.id)} onClick={e => e.stopPropagation()}
                   style={{ position: 'absolute', top: -28, left: '50%', transform: 'translateX(-50%)', width: 20, height: 20, borderRadius: '50%', zIndex: 99, cursor: 'grab', background: 'var(--color-primary-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: '#fff' }}>↻</div>
                 <div onPointerDown={e => startResize(e, el.id)} onClick={e => e.stopPropagation()}
@@ -1937,7 +2084,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
         })}
 
         {/* Ghost mode outlines — rendered above all elements */}
-        {ghostPreview && [...data.elements].map(el => {
+        {capturePrivacy === null && ghostPreview && [...data.elements].map(el => {
           const gm = getGhostMode(el)
           if (!gm || el.id === selectedId || multiIds.includes(el.id)) return null
           return (
@@ -1953,7 +2100,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
         })}
 
         {/* Marquee selection overlay */}
-        {marqueeRect && (
+        {capturePrivacy === null && marqueeRect && (
           <div style={{
             position: 'absolute',
             left: marqueeRect.x, top: marqueeRect.y,
@@ -2469,7 +2616,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
       })()}
 
       {exportPreview && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 999999, background: 'rgba(0,0,0,0.7)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}
+        <div style={{ position: 'fixed', inset: 0, zIndex: 999999, background: 'rgba(0,0,0,0.7)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, visibility: capturePrivacy === null ? 'visible' : 'hidden', pointerEvents: capturePrivacy === null ? 'auto' : 'none' }}
           onClick={() => setExportPreview(null)}>
           <div style={{ background: 'var(--color-bg)', borderRadius: 16, padding: 20, display: 'flex', flexDirection: 'column', gap: 14, maxWidth: '90%', maxHeight: '90%', boxShadow: '0 8px 40px rgba(0,0,0,0.4)' }}
             onClick={e => e.stopPropagation()}>
@@ -2489,7 +2636,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
               <button
                 onClick={async () => {
                   const nextPrivacy = !exportPreview.privacy
-                  const dataUrl = await buildExportDataUrl(nextPrivacy)
+                  const dataUrl = await buildCaptureDataUrl(nextPrivacy).catch(() => buildExportDataUrl(nextPrivacy))
                   if (dataUrl) setExportPreview(prev => prev ? { ...prev, dataUrl, privacy: nextPrivacy } : null)
                 }}
                 title={exportPreview.privacy ? '프라이버시 필터 켜짐 (클릭하여 끄기)' : '프라이버시 필터 꺼짐 (클릭하여 켜기)'}

@@ -134,6 +134,8 @@ const SCRAP_TPL_FIELDS: Record<string, ScrapField[]> = {
     { key: 'restaurant', label: '식당 이름' },
     { key: 'comment',    label: '한줄평' },
     { key: 'matColor',   label: '매트 색상', type: 'color' },
+    { key: 'photoPlaceholder', label: '빈 사진 안내 문구' },
+    { key: 'photoPlaceholderSize', label: '빈 사진 안내 폰트 크기', type: 'number' },
   ],
   youtube: [
     { key: 'impression', label: '감상평' },
@@ -218,6 +220,7 @@ export default function SettingsPanel({
   const [recentColors, setRecentColors] = useState<Record<string, string[]>>({})
   const [allDefaults, setAllDefaults] = useState<Record<string, Record<string, string>>>({})
   const [defaultCurrency, setDefaultCurrency] = useState('KRW')
+  const [customPriceUnit, setCustomPriceUnit] = useState('')
   const [selectedScrapTpl, setSelectedScrapTpl] = useState<string | null>(null)
   const [dbPath, setDbPath] = useState('')
   const [dbPending, setDbPending] = useState(false)
@@ -254,6 +257,8 @@ export default function SettingsPanel({
 
       const rawCurrency = await api.settings.get('defaultCurrency').catch(() => null)
       if (rawCurrency) setDefaultCurrency(rawCurrency)
+      const rawCustomPriceUnit = await api.settings.get('customPriceUnit').catch(() => null)
+      if (rawCustomPriceUnit) setCustomPriceUnit(rawCustomPriceUnit)
 
       const path = await api.db.getPath().catch(() => '')
       setDbPath(path)
@@ -697,6 +702,18 @@ export default function SettingsPanel({
                     style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }}>
                     {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
                   </select>
+                </div>
+                <div className="mb-3">
+                  <p className="text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>사용자 가격 단위</p>
+                  <input
+                    value={customPriceUnit}
+                    onChange={e => {
+                      setCustomPriceUnit(e.target.value)
+                      api.settings.set('customPriceUnit', e.target.value).catch(() => {})
+                    }}
+                    placeholder="예: 포인트, 알, 잔"
+                    className="w-full text-xs px-2 py-1.5 rounded-lg outline-none"
+                    style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }} />
                 </div>
                 {/* Template picker */}
                 <div className="flex flex-wrap gap-1.5 mb-3">

@@ -42,6 +42,16 @@ body {
   -webkit-app-region: no-drag;
 }
 
+.daily-menu-item {
+  display: block;
+  width: 100%;
+  background: transparent;
+}
+
+.daily-menu-item:hover {
+  background: var(--color-primary-light);
+}
+
 /* UI text scale — font-size only, layout rem values untouched */
 .text-xs   { font-size: calc(0.75rem  * var(--font-scale, 1)); }
 .text-sm   { font-size: calc(0.875rem * var(--font-scale, 1)); }
