@@ -29,6 +29,19 @@ interface Props {
 const PREVIEW_MAX = 320
 const MAX_OUT = 800
 
+function radiusPx(w: number, h: number, radius = 0): number {
+  const pct = Math.max(0, Math.min(50, radius))
+  return Math.round(Math.min(w, h) * pct / 100)
+}
+
+function getOutputSize(w: number, h: number): { w: number; h: number } {
+  const scale = Math.min(MAX_OUT / w, MAX_OUT / h)
+  return {
+    w: Math.max(1, Math.round(w * scale)),
+    h: Math.max(1, Math.round(h * scale)),
+  }
+}
+
 function ShapeMask({ shape, w, h, customShapes }: { shape: string; w: number; h: number; customShapes: CustomShape[] }) {
   if (shape === 'none' || shape === 'free') return null
 
@@ -266,6 +279,7 @@ export default function CropModal({
     const visY = Math.max(0, imgY)
     const visW = Math.max(0, Math.min(previewW, imgX + dw) - visX)
     const visH = Math.max(0, Math.min(previewH, imgY + dh) - visY)
+    const out = getOutputSize(frameW, frameH)
 
     const drawToCtx = (ctx: CanvasRenderingContext2D, outW: number, outH: number) => {
       if (visW <= 0 || visH <= 0) return
@@ -281,22 +295,22 @@ export default function CropModal({
       const maskImg = await new Promise<HTMLImageElement>((resolve, reject) => {
         const m = new Image(); m.onload = () => resolve(m); m.onerror = reject; m.src = custom.maskSrc!
       })
-      const mScale = Math.min(frameW / maskImg.naturalWidth, frameH / maskImg.naturalHeight)
+      const mScale = Math.min(out.w / maskImg.naturalWidth, out.h / maskImg.naturalHeight)
       const mW = maskImg.naturalWidth * mScale, mH = maskImg.naturalHeight * mScale
-      const mX = (frameW - mW) / 2, mY = (frameH - mH) / 2
+      const mX = (out.w - mW) / 2, mY = (out.h - mH) / 2
 
       const canvasA = document.createElement('canvas')
-      canvasA.width = frameW; canvasA.height = frameH
+      canvasA.width = out.w; canvasA.height = out.h
       const ctxA = canvasA.getContext('2d')!
-      drawToCtx(ctxA, frameW, frameH)
+      drawToCtx(ctxA, out.w, out.h)
       ctxA.globalCompositeOperation = 'destination-in'
       ctxA.drawImage(maskImg, mX, mY, mW, mH)
 
       const canvas = document.createElement('canvas')
-      canvas.width = frameW; canvas.height = frameH
+      canvas.width = out.w; canvas.height = out.h
       const ctx = canvas.getContext('2d')!
       if (bgColor !== 'transparent') {
-        ctx.fillStyle = bgColor; ctx.fillRect(0, 0, frameW, frameH)
+        ctx.fillStyle = bgColor; ctx.fillRect(0, 0, out.w, out.h)
         ctx.globalCompositeOperation = 'destination-in'
         ctx.drawImage(maskImg, mX, mY, mW, mH)
         ctx.globalCompositeOperation = 'source-over'
@@ -307,10 +321,10 @@ export default function CropModal({
     }
 
     const canvas = document.createElement('canvas')
-    canvas.width = frameW; canvas.height = frameH
+    canvas.width = out.w; canvas.height = out.h
     const ctx = canvas.getContext('2d')!
-    if (bgColor !== 'transparent') { ctx.fillStyle = bgColor; ctx.fillRect(0, 0, frameW, frameH) }
-    drawToCtx(ctx, frameW, frameH)
+    if (bgColor !== 'transparent') { ctx.fillStyle = bgColor; ctx.fillRect(0, 0, out.w, out.h) }
+    drawToCtx(ctx, out.w, out.h)
     onConfirm(canvas.toDataURL('image/png'), selectedShape, undefined, selectedShape === 'none' ? borderRadius : 0)
   }
 
@@ -346,6 +360,8 @@ export default function CropModal({
     : { position: 'absolute', left: imgX, top: imgY, width: getDisplaySize().w, height: getDisplaySize().h, maxWidth: 'none', userSelect: 'none', pointerEvents: 'none' }
 
   const showRadiusSlider = selectedShape === 'none' || selectedShape === 'free'
+  const previewRadius = showRadiusSlider ? radiusPx(previewW, previewH, borderRadius) : 8
+  const outputRadius = radiusPx(frameW, frameH, borderRadius)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center"
@@ -436,7 +452,7 @@ export default function CropModal({
           style={{
             width: previewW, height: previewH, overflow: 'hidden', position: 'relative',
             cursor: isFree ? 'crosshair' : 'move',
-            borderRadius: 8, border: '2px solid var(--color-primary)',
+            borderRadius: previewRadius, border: '2px solid var(--color-primary)',
             background: isFree ? '#e8e8e8' : bgColor,
           }}
           onPointerDown={onPointerDown}
@@ -466,7 +482,7 @@ export default function CropModal({
             <input type="range" min={0} max={50} value={borderRadius}
               onChange={e => setBorderRadius(Number(e.target.value))}
               className="flex-1 cursor-pointer" />
-            <span className="text-xs w-8 text-right" style={{ color: 'var(--color-primary-dark)' }}>{borderRadius}%</span>
+            <span className="text-xs w-10 text-right" style={{ color: 'var(--color-primary-dark)' }}>{outputRadius}px</span>
           </div>
         )}
 

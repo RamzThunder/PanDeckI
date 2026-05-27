@@ -270,6 +270,7 @@ function loadImg(src: string): Promise<HTMLImageElement> {
 }
 
 function rrect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  r = Math.max(0, Math.min(r, Math.min(w, h) / 2))
   ctx.beginPath()
   ctx.moveTo(x + r, y)
   ctx.arcTo(x + w, y, x + w, y + h, r)
@@ -277,6 +278,11 @@ function rrect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h
   ctx.arcTo(x, y + h, x, y, r)
   ctx.arcTo(x, y, x + w, y, r)
   ctx.closePath()
+}
+
+function photoRadiusPx(w: number, h: number, radius = 0): number {
+  const pct = Math.max(0, Math.min(50, radius))
+  return Math.round(Math.min(w, h) * pct / 100)
 }
 
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] {
@@ -894,7 +900,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
               const pts: [number,number][] = [[.5,0],[.61,.35],[.98,.35],[.68,.57],[.79,.91],[.5,.70],[.21,.91],[.32,.57],[.02,.35],[.39,.35]]
               ctx.beginPath(); pts.forEach(([x,y],i) => i===0 ? ctx.moveTo(x*el.w,y*el.h) : ctx.lineTo(x*el.w,y*el.h)); ctx.closePath(); ctx.clip()
             } else if (el.clipShape === 'none' && (el.photoRadius ?? 0) > 0) {
-              const r = Math.min(el.w, el.h) * (el.photoRadius ?? 0) / 100
+              const r = photoRadiusPx(el.w, el.h, el.photoRadius)
               rrect(ctx, 0, 0, el.w, el.h, r); ctx.clip()
             } else if (el.clipShape.startsWith('custom_')) {
               const cs = customShapes.find(c => c.id === el.clipShape)
@@ -1789,7 +1795,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                 ...clipStyle,
                 overflow: (el.type === 'photo' || (el.type === 'text' && textRad > 0) || el.type === 'markdown') ? 'hidden' : undefined,
                 borderRadius: el.type === 'photo'
-                  ? (el.clipShape === 'none' ? `${el.photoRadius ?? 0}%` : 0)
+                  ? (el.clipShape === 'none' ? `${photoRadiusPx(el.w, el.h, el.photoRadius)}px` : 0)
                   : (el.type === 'text' || el.type === 'markdown') ? `${textRad}px` : 0,
                 filter: ghostPreview && gm === 'blur' ? `blur(${blurIntensity}px)` : ghostPreview && gm === 'mosaic' ? "url('#pixelate-filter')" : undefined,
               }}>
@@ -2342,7 +2348,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
                   <input type="range" min={0} max={50} value={selectedEl.photoRadius ?? 0}
                     onChange={e => updateEl(selectedEl.id, { photoRadius: Number(e.target.value) })}
                     style={{ width: 40, height: 4, cursor: 'pointer', flexShrink: 0 }} />
-                  <span style={{ fontSize: 10, color: 'var(--color-primary-dark)', minWidth: 22, flexShrink: 0 }}>{selectedEl.photoRadius ?? 0}%</span>
+                  <span style={{ fontSize: 10, color: 'var(--color-primary-dark)', minWidth: 28, flexShrink: 0 }}>{photoRadiusPx(selectedEl.w, selectedEl.h, selectedEl.photoRadius)}px</span>
                   {vSep}
 
                 </>)}
