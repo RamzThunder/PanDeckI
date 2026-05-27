@@ -258,7 +258,15 @@ pub struct StickerPack {
 }
 
 fn find_sticker_dir_dev() -> Option<PathBuf> {
-    // Walk up from the executable to find the project's sticker folder
+    // Check current working directory first (Tauri dev sets cwd = project root,
+    // even when CARGO_TARGET_DIR is set outside the project tree)
+    if let Ok(cwd) = std::env::current_dir() {
+        let candidate = cwd.join("sticker");
+        if candidate.exists() && candidate.is_dir() {
+            return Some(candidate);
+        }
+    }
+    // Walk up from the executable as a fallback
     let exe = std::env::current_exe().ok()?;
     let mut dir = exe.parent()?;
     for _ in 0..6 {
@@ -328,7 +336,7 @@ pub fn list_sticker_packs(state: State<DbState>, app: tauri::AppHandle) -> Vec<S
                 img_list.sort_by_key(|e| e.file_name());
                 files = img_list
                     .into_iter()
-                    .map(|e| e.path().to_string_lossy().to_string())
+                    .map(|e| e.path().to_string_lossy().replace('\\', "/"))
                     .collect();
             }
             packs.push(StickerPack { name: pack_name, files });
@@ -341,7 +349,7 @@ pub fn list_sticker_packs(state: State<DbState>, app: tauri::AppHandle) -> Vec<S
 pub async fn pick_sticker_dir(app: tauri::AppHandle, state: State<'_, DbState>) -> Result<Option<String>, String> {
     let result = app.dialog().file().blocking_pick_folder();
     if let Some(path) = result {
-        let path_str = path.to_string();
+        let path_str = path.to_string().replace('\\', "/");
         if let Ok(conn) = state.0.lock() {
             let _ = conn.execute(
                 "INSERT INTO settings (key, value) VALUES ('sticker_dir', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
