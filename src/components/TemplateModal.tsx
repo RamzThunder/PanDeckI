@@ -1175,7 +1175,7 @@ function drawFood(d: FoodData, font: string, imgs: Imgs): { dataUrl: string; w: 
     placeholderClr = 'rgba(255,255,255,0.78)'
   } else {
     ink       = matTone(r, g, b, 0.40)
-    muted     = matTone(r, g, b, 0.50)
+    muted     = matTone(r, g, b, 0.40)
     coral     = matTone(r, g, b, 0.35)
     dateClr   = matTone(r, g, b, 0.34, 0.74)
     strokeClr = 'rgba(255,255,255,0.3)'
