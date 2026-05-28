@@ -17,6 +17,7 @@ interface Props {
   mosaicIntensity: number
   blurIntensity: number
   diaryName: string
+  gridSpacing: number
 }
 
 export interface CanvasEl {
@@ -676,7 +677,7 @@ function InteractiveOverlay({ url, cmdHeld }: { url: string; cmdHeld: boolean })
   )
 }
 
-export default function DailyView({ currentDate, onPrev, onNext, onToday, systemFonts, globalFont, mosaicIntensity, blurIntensity, diaryName }: Props): JSX.Element {
+export default function DailyView({ currentDate, onPrev, onNext, onToday, systemFonts, globalFont, mosaicIntensity, blurIntensity, diaryName, gridSpacing }: Props): JSX.Element {
   const dateStr = toLocalDate(currentDate)
   const [data, setData] = useState<DailyData>(DEFAULT_DATA)
   const [saved, setSaved] = useState(false)
@@ -1865,12 +1866,12 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
       <div ref={canvasRef} className="flex-1 relative overflow-hidden" style={canvasBgStyle}
         onPointerDown={startMarquee}>
 
-        {/* Grid overlay */}
+        {/* Grid overlay — zIndex: 1 keeps it above canvas bg but below all UI (toolbars, popups) */}
         {showGrid && capturePrivacy === null && (
           <div style={{
-            position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 9998,
+            position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 1,
             backgroundImage: 'linear-gradient(to right, rgba(100,100,200,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(100,100,200,0.12) 1px, transparent 1px)',
-            backgroundSize: '40px 40px',
+            backgroundSize: `${gridSpacing}px ${gridSpacing}px`,
           }} />
         )}
 

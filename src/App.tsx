@@ -30,6 +30,7 @@ export default function App(): JSX.Element {
   const [mosaicIntensity, setMosaicIntensity] = useState(14)
   const [blurIntensity, setBlurIntensity] = useState(12)
   const [diaryName, setDiaryName] = useState('dida')
+  const [gridSpacing, setGridSpacing] = useState(40)
   const [monthlyExportPreview, setMonthlyExportPreview] = useState<{ dataUrl: string; filename: string } | null>(null)
 
   const zoomRef = useRef(appZoom)
@@ -47,7 +48,7 @@ export default function App(): JSX.Element {
     async function loadSettings() {
       const s = await invoke<Record<string, string>>('get_settings_batch', {
         keys: ['active_theme', 'appZoom', 'globalFont', 'fontScale', 'fontOffsetY',
-               'ghostMosaicIntensity', 'ghostBlurIntensity', 'diaryName']
+               'ghostMosaicIntensity', 'ghostBlurIntensity', 'diaryName', 'gridSpacing']
       }).catch(() => ({} as Record<string, string>))
 
       const id = s['active_theme'] ?? 'sky'
@@ -93,6 +94,9 @@ export default function App(): JSX.Element {
 
       const savedDiaryName = s['diaryName']
       if (savedDiaryName) setDiaryName(savedDiaryName)
+
+      const savedGridSpacing = s['gridSpacing']
+      if (savedGridSpacing) { const v = parseInt(savedGridSpacing); if (!isNaN(v)) setGridSpacing(v) }
     }
     loadSettings()
     // 폰트 목록은 시작 직후 로딩하면 Windows에서 PowerShell 초기화로 느려짐 — 1초 지연
@@ -188,6 +192,11 @@ export default function App(): JSX.Element {
     api.settings.set('diaryName', name).catch(() => {})
   }
 
+  const handleGridSpacingChange = (v: number) => {
+    setGridSpacing(v)
+    api.settings.set('gridSpacing', v.toString()).catch(() => {})
+  }
+
   return (
     <div style={{
       width: CANVAS_W, height: CANVAS_H,
@@ -248,6 +257,7 @@ export default function App(): JSX.Element {
               mosaicIntensity={mosaicIntensity}
               blurIntensity={blurIntensity}
               diaryName={diaryName}
+              gridSpacing={gridSpacing}
             />
           </div>
         )}
@@ -298,6 +308,8 @@ export default function App(): JSX.Element {
           onBlurIntensityChange={handleBlurIntensityChange}
           diaryName={diaryName}
           onDiaryNameChange={handleDiaryNameChange}
+          gridSpacing={gridSpacing}
+          onGridSpacingChange={handleGridSpacingChange}
           systemFonts={systemFonts}
           onClose={() => setShowSettings(false)}
         />

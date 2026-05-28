@@ -26,6 +26,8 @@ interface Props {
   onBlurIntensityChange: (v: number) => void
   diaryName: string
   onDiaryNameChange: (name: string) => void
+  gridSpacing: number
+  onGridSpacingChange: (v: number) => void
   onClose: () => void
 }
 
@@ -207,6 +209,7 @@ export default function SettingsPanel({
   mosaicIntensity, onMosaicIntensityChange,
   blurIntensity, onBlurIntensityChange,
   diaryName, onDiaryNameChange,
+  gridSpacing, onGridSpacingChange,
   onClose,
 }: Props): JSX.Element {
   const [tab, setTab] = useState<Tab>('info')
@@ -651,6 +654,27 @@ export default function SettingsPanel({
         {tab === 'detail' && (
           <div className="flex-1 flex flex-col overflow-hidden">
             <div className="flex-1 p-4 flex flex-col gap-5 overflow-y-auto">
+              <section>
+                <p className="text-xs font-semibold mb-3" style={{ color: 'var(--color-text-muted)' }}>캔버스 그리드</p>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs" style={{ color: 'var(--color-text)' }}>격자 간격</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold" style={{ color: 'var(--color-text-muted)' }}>{gridSpacing}px</span>
+                      <button onClick={() => onGridSpacingChange(40)} className="text-xs hover:opacity-70"
+                        style={{ color: 'var(--color-text-muted)' }}>초기화</button>
+                    </div>
+                  </div>
+                  <input type="range" min={10} max={100} step={5} value={gridSpacing}
+                    onChange={e => onGridSpacingChange(Number(e.target.value))}
+                    className="w-full cursor-pointer" />
+                  <div className="flex justify-between mt-0.5">
+                    <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>좁게</span>
+                    <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>넓게</span>
+                  </div>
+                </div>
+              </section>
+
               <section>
                 <p className="text-xs font-semibold mb-3" style={{ color: 'var(--color-text-muted)' }}>유령 모드 효과</p>
                 <div className="flex flex-col gap-4">
