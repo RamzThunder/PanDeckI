@@ -124,6 +124,9 @@ export const api = {
     async getPath(): Promise<string> {
       return invoke<string>('get_db_path')
     },
+    async openFolder(): Promise<void> {
+      await invoke('open_db_folder')
+    },
     async pickDir(): Promise<string> {
       return invoke<string>('pick_db_dir')
     },

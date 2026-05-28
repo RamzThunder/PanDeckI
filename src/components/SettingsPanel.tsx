@@ -457,6 +457,14 @@ export default function SettingsPanel({
                 <button
                   className="flex-1 text-xs py-2 rounded-xl hover:opacity-80 font-medium"
                   style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}
+                  onClick={() => {
+                    api.db.openFolder().catch(() => {})
+                  }}>
+                  저장 폴더 열기
+                </button>
+                <button
+                  className="flex-1 text-xs py-2 rounded-xl hover:opacity-80 font-medium"
+                  style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}
                   onClick={async () => {
                     try {
                       const newPath = await api.db.pickDir()

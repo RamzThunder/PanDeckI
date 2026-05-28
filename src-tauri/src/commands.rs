@@ -697,6 +697,22 @@ pub fn get_db_path(state: State<DbPathState>) -> String {
 }
 
 #[command]
+pub fn open_db_folder(state: State<DbPathState>) -> Result<(), String> {
+    let db_path = state.0.lock().map_err(|e| e.to_string())?.clone();
+    let folder = db_path.parent().unwrap_or(db_path.as_path());
+    let folder = folder.to_string_lossy().to_string();
+
+    #[cfg(target_os = "macos")]
+    std::process::Command::new("open").arg(&folder).spawn().map_err(|e| e.to_string())?;
+    #[cfg(target_os = "windows")]
+    std::process::Command::new("cmd").args(["/c", "start", "", &folder]).spawn().map_err(|e| e.to_string())?;
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    std::process::Command::new("xdg-open").arg(&folder).spawn().map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[command]
 pub async fn pick_db_dir(app: AppHandle, path_state: State<'_, DbPathState>) -> Result<String, String> {
     let folder = app.dialog().file().blocking_pick_folder()
         .ok_or_else(|| "취소됨".to_string())?;

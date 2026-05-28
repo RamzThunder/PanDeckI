@@ -147,6 +147,7 @@ pub fn run() {
             commands::backup_export_to,
             commands::backup_import_from,
             commands::get_db_path,
+            commands::open_db_folder,
             commands::pick_db_dir,
             commands::reset_db_path,
             commands::open_url,

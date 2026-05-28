@@ -287,6 +287,18 @@ function drawCoverImg(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: n
   ctx.drawImage(img, x + (w - sw) / 2, y + (h - sh) / 2, sw, sh)
 }
 
+function parseReceiptPrice(price: string): number {
+  const match = price.match(/[-−–—]?\s*\d[\d,]*/)
+  if (!match) return 0
+
+  const normalized = match[0]
+    .replace(/[−–—]/g, '-')
+    .replace(/\s/g, '')
+    .replace(/,/g, '')
+
+  return Number(normalized) || 0
+}
+
 async function pickAndReadImage(): Promise<string | null> {
   return api.file.pickImage().catch(() => null)
 }
@@ -564,7 +576,7 @@ function drawReceipt(d: ReceiptData, font: string, priceUnitPosition: PriceUnitP
   const W = 220, pad = 16
   const f = cf(font)
   const items = d.items.filter(i => i.name)
-  const total = items.reduce((s, i) => s + (Number(i.price.replace(/[^0-9]/g, '')) || 0), 0)
+  const total = items.reduce((s, i) => s + parseReceiptPrice(i.price), 0)
   const curSym = currencySymbol(d.currency, d.customCurrency)
   const itemFont = `11px ${f}`
   const nameCtx = measureCtx(itemFont)

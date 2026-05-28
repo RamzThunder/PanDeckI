@@ -194,6 +194,7 @@ api.shell      openUrl(url)
 api.http       fetchText(url), fetchImageB64(url)
 api.export     savePng(b64, filename), captureToB64(), captureScreenshot()
 api.backup     export(), import()
+api.db         getPath(), openFolder(), pickDir(), resetPath()
 ```
 
 ## Settings DB 키 목록
@@ -247,6 +248,9 @@ save_png(b64, filename), capture_screenshot_to, capture_screenshot_b64
 
 # 백업
 backup_export_to, backup_import_from   ← import는 트랜잭션으로 원자적 처리
+
+# DB 경로
+get_db_path, open_db_folder, pick_db_dir, reset_db_path
 
 # 네트워크
 fetch_text, fetch_image_b64
