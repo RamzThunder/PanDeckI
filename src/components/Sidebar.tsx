@@ -1,4 +1,5 @@
 import React from 'react'
+import { createPortal } from 'react-dom'
 import { invoke } from '@tauri-apps/api/core'
 import { ViewMode } from '../store/diary'
 
@@ -82,6 +83,19 @@ const pushRecentBgm = (recents: BgmTrack[], track: BgmTrack) => {
   return [track, ...recents.filter(item => item.id !== track.id)].slice(0, 5)
 }
 
+const loadPngB64 = (b64: string) => {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('image failed'))
+    img.src = `data:image/png;base64,${b64}`
+  })
+}
+
+const toHex = (r: number, g: number, b: number) => {
+  return `#${[r, g, b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase()}`
+}
+
 const loadYoutubeApi = () => {
   if (window.YT?.Player) return Promise.resolve()
   if (youtubeApiPromise) return youtubeApiPromise
@@ -121,6 +135,8 @@ const ICONS = {
   export:   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
   music:   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>,
   musicOff:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>,
+  colorPicker:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z"/></svg>,
+  check:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
   repeatAll:<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></svg>,
   repeatOne:<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /><path d="M11 11l1-1v4" /></svg>,
   save:     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M 6 21 v -5 a 1 1 0 0 1 1 -1 h 10 a 1 1 0 0 1 1 1 v 5"/><path d="M 8 3 v 4 a 1 1 0 0 0 1 1 h 6 a 1 1 0 0 0 1 -1 v -4"/></svg>,
@@ -153,6 +169,10 @@ const TrafficLight = ({ color, hoverColor, onClick }: { color: string; hoverColo
 export default function Sidebar({ viewMode, currentDate, onViewChange, onThemeToggle, themeOpen, onSave, onExport }: Props): JSX.Element {
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth() + 1
+  const [pickedColor, setPickedColor] = React.useState('')
+  const [isColorPicking, setIsColorPicking] = React.useState(false)
+  const [colorPointer, setColorPointer] = React.useState<{ x: number; y: number } | null>(null)
+  const [colorMagnifier, setColorMagnifier] = React.useState<{ x: number; y: number; b64: string; hex: string } | null>(null)
   const [bgmUrl, setBgmUrl] = React.useState(() => {
     return readBgmStorage().url || ''
   })
@@ -188,6 +208,10 @@ export default function Sidebar({ viewMode, currentDate, onViewChange, onThemeTo
   const playbackModeRef = React.useRef(playbackMode)
   const bgmRequestRef = React.useRef(0)
   const clickTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const colorFeedbackTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const suppressClickUntilRef = React.useRef(0)
+  const colorSnapshotCanvasRef = React.useRef<HTMLCanvasElement | null>(null)
+  const colorSnapshotScaleRef = React.useRef({ x: 1, y: 1 })
 
   const extractYoutubeId = React.useCallback((url: string) => {
     const trimmed = url.trim()
@@ -311,6 +335,61 @@ export default function Sidebar({ viewMode, currentDate, onViewChange, onThemeTo
     }, 250)
   }
 
+  const copyPickedColor = React.useCallback(async (hex: string) => {
+    const normalized = hex.toUpperCase()
+    try {
+      await navigator.clipboard.writeText(normalized)
+    } catch {
+      const ta = document.createElement('textarea')
+      ta.value = normalized
+      ta.style.position = 'fixed'
+      ta.style.left = '-9999px'
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+    }
+
+    setPickedColor(normalized)
+    if (colorFeedbackTimeoutRef.current) clearTimeout(colorFeedbackTimeoutRef.current)
+    colorFeedbackTimeoutRef.current = setTimeout(() => setPickedColor(''), 1400)
+  }, [])
+
+  const handleColorPick = async () => {
+    setIsColorPicking(true)
+  }
+
+  const stopPickerEvent = (event: Event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    event.stopImmediatePropagation()
+  }
+
+  const sampleColorFromSnapshot = React.useCallback((x: number, y: number) => {
+    const source = colorSnapshotCanvasRef.current
+    if (!source) return null
+
+    const scale = colorSnapshotScaleRef.current
+    const sx = Math.max(0, Math.min(source.width - 1, Math.round(x * scale.x)))
+    const sy = Math.max(0, Math.min(source.height - 1, Math.round(y * scale.y)))
+    const sourceCtx = source.getContext('2d')
+    if (!sourceCtx) return null
+
+    const [r, g, b] = sourceCtx.getImageData(sx, sy, 1, 1).data
+    const crop = document.createElement('canvas')
+    crop.width = 15
+    crop.height = 15
+    const cropCtx = crop.getContext('2d')
+    if (!cropCtx) return null
+    cropCtx.imageSmoothingEnabled = false
+    cropCtx.drawImage(source, sx - 7, sy - 7, 15, 15, 0, 0, 15, 15)
+
+    return {
+      b64: crop.toDataURL('image/png').split(',')[1],
+      hex: toHex(r, g, b),
+    }
+  }, [])
+
   React.useEffect(() => {
     isPlayingRef.current = isPlaying
   }, [isPlaying])
@@ -424,12 +503,164 @@ export default function Sidebar({ viewMode, currentDate, onViewChange, onThemeTo
   }, [isPlaying, bgmId])
 
   React.useEffect(() => {
+    if (!isColorPicking) return
+
+    let cancelled = false
+    colorSnapshotCanvasRef.current = null
+    setColorMagnifier(null)
+    const snapshotRect = {
+      x: 0,
+      y: 0,
+      w: window.innerWidth,
+      h: window.innerHeight,
+    }
+    invoke<string>('capture_region_b64', snapshotRect)
+      .then(loadPngB64)
+      .then(img => {
+        if (cancelled) return
+        const canvas = document.createElement('canvas')
+        canvas.width = img.naturalWidth || img.width
+        canvas.height = img.naturalHeight || img.height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+        ctx.drawImage(img, 0, 0)
+        colorSnapshotCanvasRef.current = canvas
+        colorSnapshotScaleRef.current = {
+          x: canvas.width / Math.max(1, snapshotRect.w),
+          y: canvas.height / Math.max(1, snapshotRect.h),
+        }
+      })
+      .catch(e => console.warn('app color snapshot failed', e))
+
+    const onPointerDown = async (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target?.closest('[data-color-picker-button="true"]')) return
+
+      stopPickerEvent(event)
+      suppressClickUntilRef.current = Date.now() + 500
+      setIsColorPicking(false)
+      setColorMagnifier(null)
+      setColorPointer(null)
+
+      const sample = sampleColorFromSnapshot(event.clientX, event.clientY)
+      if (sample) await copyPickedColor(sample.hex)
+    }
+
+    const onPointerMove = (event: PointerEvent) => {
+      stopPickerEvent(event)
+      const x = event.clientX
+      const y = event.clientY
+      setColorPointer({ x, y })
+
+      const sample = sampleColorFromSnapshot(x, y)
+      if (sample) setColorMagnifier({ x, y, ...sample })
+    }
+
+    const blockPointerEvent = (event: PointerEvent) => {
+      stopPickerEvent(event)
+    }
+
+    const blockClickEvent = (event: MouseEvent) => {
+      stopPickerEvent(event)
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        stopPickerEvent(event)
+        setIsColorPicking(false)
+        setColorMagnifier(null)
+        setColorPointer(null)
+      }
+    }
+
+    document.addEventListener('pointerdown', onPointerDown, true)
+    document.addEventListener('pointermove', onPointerMove, true)
+    document.addEventListener('pointerup', blockPointerEvent, true)
+    document.addEventListener('click', blockClickEvent, true)
+    document.addEventListener('keydown', onKeyDown, true)
+    return () => {
+      cancelled = true
+      colorSnapshotCanvasRef.current = null
+      document.removeEventListener('pointerdown', onPointerDown, true)
+      document.removeEventListener('pointermove', onPointerMove, true)
+      document.removeEventListener('pointerup', blockPointerEvent, true)
+      document.removeEventListener('click', blockClickEvent, true)
+      document.removeEventListener('keydown', onKeyDown, true)
+    }
+  }, [copyPickedColor, isColorPicking, sampleColorFromSnapshot])
+
+  React.useEffect(() => {
+    const blockStrayClick = (event: MouseEvent) => {
+      if (Date.now() < suppressClickUntilRef.current) stopPickerEvent(event)
+    }
+
+    document.addEventListener('click', blockStrayClick, true)
+    return () => document.removeEventListener('click', blockStrayClick, true)
+  }, [])
+
+  React.useEffect(() => {
     return () => {
       if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current)
+      if (colorFeedbackTimeoutRef.current) clearTimeout(colorFeedbackTimeoutRef.current)
       ytPlayerRef.current?.stopVideo?.()
       ytPlayerRef.current?.destroy?.()
     }
   }, [])
+
+  const colorMagnifierOverlay = isColorPicking && (colorPointer || colorMagnifier)
+    ? createPortal(
+      <div
+        style={{
+          position: 'fixed',
+          left: Math.min((colorPointer?.x ?? colorMagnifier?.x ?? 0) + 18, window.innerWidth - 140),
+          top: Math.min((colorPointer?.y ?? colorMagnifier?.y ?? 0) + 18, window.innerHeight - 166),
+          width: 122,
+          padding: 6,
+          borderRadius: 10,
+          background: 'var(--color-bg)',
+          border: '1px solid var(--color-border)',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
+          zIndex: 999999,
+          pointerEvents: 'none',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 6
+        }}
+      >
+        <div
+          style={{
+            position: 'relative',
+            width: 108,
+            height: 108,
+            overflow: 'hidden',
+            borderRadius: 8,
+            border: '1px solid var(--color-border)',
+            background: '#fff'
+          }}
+        >
+          <img
+            src={colorMagnifier ? `data:image/png;base64,${colorMagnifier.b64}` : undefined}
+            draggable={false}
+            style={{
+              width: '100%',
+              height: '100%',
+              imageRendering: 'pixelated',
+              display: colorMagnifier ? 'block' : 'none'
+            }}
+          />
+          <div style={{ position: 'absolute', left: '50%', top: 0, width: 1, height: '100%', background: 'rgba(0,0,0,0.38)' }} />
+          <div style={{ position: 'absolute', left: 0, top: '50%', width: '100%', height: 1, background: 'rgba(0,0,0,0.38)' }} />
+          <div style={{ position: 'absolute', left: '50%', top: '50%', width: 10, height: 10, transform: 'translate(-50%, -50%)', border: '2px solid #fff', boxShadow: '0 0 0 1px rgba(0,0,0,0.65)', borderRadius: 2 }} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+          <span style={{ width: 14, height: 14, borderRadius: 4, border: '1px solid var(--color-border)', background: colorMagnifier?.hex ?? 'transparent', flexShrink: 0 }} />
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-primary-dark)', whiteSpace: 'nowrap' }}>{colorMagnifier?.hex ?? '읽는 중...'}</span>
+        </div>
+      </div>,
+      document.body
+    )
+    : null
 
   return (
     <aside
@@ -735,6 +966,50 @@ export default function Sidebar({ viewMode, currentDate, onViewChange, onThemeTo
           pointerEvents: 'none'
         }}
       />
+
+      {/* 컬러 피커 버튼 */}
+      <div className="relative flex items-center justify-center mb-1" style={{ width: '100%', zIndex: 18 }}>
+        <button
+          data-color-picker-button="true"
+          onClick={handleColorPick}
+          className="w-11 h-11 rounded-xl flex items-center justify-center transition-all"
+          style={{
+            background: pickedColor ? 'var(--color-primary)' : isColorPicking ? 'var(--color-primary-light)' : 'transparent',
+            color: pickedColor ? '#fff' : isColorPicking ? 'var(--color-primary-dark)' : 'var(--color-text-muted)',
+            opacity: isColorPicking ? 0.65 : 1,
+            cursor: isColorPicking ? 'crosshair' : 'pointer'
+          }}
+          title={isColorPicking ? '앱 안에서 색상을 클릭하세요' : '앱 내부 색상 추출'}
+        >
+          {pickedColor ? ICONS.check : ICONS.colorPicker}
+        </button>
+
+        {(pickedColor || isColorPicking) && (
+          <div
+            style={{
+              position: 'absolute',
+              left: '100%',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              marginLeft: 8,
+              padding: '6px 9px',
+              borderRadius: 8,
+              background: 'var(--color-bg)',
+              border: '1px solid var(--color-border)',
+              boxShadow: '0 8px 22px rgba(0,0,0,0.12)',
+              color: 'var(--color-primary-dark)',
+              fontSize: 12,
+              fontWeight: 700,
+              whiteSpace: 'nowrap',
+              pointerEvents: 'none'
+            }}
+          >
+            {pickedColor ? `${pickedColor} 복사!` : '색상 클릭'}
+          </div>
+        )}
+      </div>
+
+      {colorMagnifierOverlay}
 
       <div className="flex-1" style={{ width: '100%', cursor: 'move' }} onMouseDown={startDrag} />
 

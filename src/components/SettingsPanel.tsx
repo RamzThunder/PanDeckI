@@ -357,9 +357,20 @@ export default function SettingsPanel({
     : systemFonts
 
   return (
-    <div className="fixed inset-0 flex justify-end" style={{ zIndex: 999999 }} onClick={onClose}>
+    <div className="fixed inset-0 flex justify-end" style={{ zIndex: 999999, pointerEvents: 'none' }}>
+      <div
+        onClick={onClose}
+        style={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          left: 64,
+          right: 288,
+          pointerEvents: 'auto',
+        }}
+      />
       <div className="w-72 h-full overflow-y-auto shadow-2xl flex flex-col"
-        style={{ background: 'var(--color-bg)', borderLeft: '1px solid var(--color-border)' }}
+        style={{ background: 'var(--color-bg)', borderLeft: '1px solid var(--color-border)', pointerEvents: 'auto' }}
         onClick={e => e.stopPropagation()}>
 
         {/* Header */}
