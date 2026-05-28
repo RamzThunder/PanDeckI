@@ -364,7 +364,7 @@ export default function CropModal({
   const outputRadius = radiusPx(frameW, frameH, borderRadius)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center"
+    <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: 99000 }}
       style={{ background: 'rgba(0,0,0,0.65)' }}
       onClick={e => { if (e.target === e.currentTarget) onCancel() }}>
       <div className="flex flex-col gap-3 p-5 rounded-2xl shadow-2xl"
