@@ -221,6 +221,7 @@ export default function SettingsPanel({
   const [allDefaults, setAllDefaults] = useState<Record<string, Record<string, string>>>({})
   const [defaultCurrency, setDefaultCurrency] = useState('KRW')
   const [customPriceUnit, setCustomPriceUnit] = useState('')
+  const [priceUnitPosition, setPriceUnitPosition] = useState<'prefix' | 'suffix'>('prefix')
   const [selectedScrapTpl, setSelectedScrapTpl] = useState<string | null>(null)
   const [dbPath, setDbPath] = useState('')
   const [dbPending, setDbPending] = useState(false)
@@ -259,6 +260,8 @@ export default function SettingsPanel({
       if (rawCurrency) setDefaultCurrency(rawCurrency)
       const rawCustomPriceUnit = await api.settings.get('customPriceUnit').catch(() => null)
       if (rawCustomPriceUnit) setCustomPriceUnit(rawCustomPriceUnit)
+      const rawPriceUnitPosition = await api.settings.get('priceUnitPosition').catch(() => null)
+      if (rawPriceUnitPosition === 'suffix') setPriceUnitPosition('suffix')
 
       const path = await api.db.getPath().catch(() => '')
       setDbPath(path)
@@ -714,6 +717,33 @@ export default function SettingsPanel({
                     placeholder="예: 포인트, 알, 잔"
                     className="w-full text-xs px-2 py-1.5 rounded-lg outline-none"
                     style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }} />
+                </div>
+                <div className="mb-3">
+                  <p className="text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>통화 단위 위치</p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {([
+                      { id: 'prefix' as const, label: '앞에 표시', sample: '₩12,000' },
+                      { id: 'suffix' as const, label: '뒤에 표시', sample: '12,000원' },
+                    ]).map(opt => (
+                      <button
+                        key={opt.id}
+                        onClick={() => {
+                          setPriceUnitPosition(opt.id)
+                          api.settings.set('priceUnitPosition', opt.id).catch(() => {})
+                        }}
+                        className="text-xs px-2 py-1.5 rounded-lg font-medium"
+                        style={{
+                          border: `1px solid ${priceUnitPosition === opt.id ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                          background: priceUnitPosition === opt.id ? 'var(--color-primary-light)' : 'white',
+                          color: priceUnitPosition === opt.id ? 'var(--color-primary-dark)' : 'var(--color-text-muted)',
+                          cursor: 'pointer',
+                        }}
+                        title={opt.sample}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 {/* Template picker */}
                 <div className="flex flex-wrap gap-1.5 mb-3">

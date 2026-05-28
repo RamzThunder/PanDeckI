@@ -52,6 +52,17 @@ body {
   background: var(--color-primary-light);
 }
 
+.bgm-marquee-text {
+  display: inline-block;
+  flex-shrink: 0;
+  animation: bgm-marquee 20s linear infinite;
+}
+
+@keyframes bgm-marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(calc(-100% - 220px)); }
+}
+
 /* UI text scale — font-size only, layout rem values untouched */
 .text-xs   { font-size: calc(0.75rem  * var(--font-scale, 1)); }
 .text-sm   { font-size: calc(0.875rem * var(--font-scale, 1)); }

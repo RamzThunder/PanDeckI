@@ -24,6 +24,7 @@ function parsePriceValue(value: string): { code: string; amount: string } {
   const sorted = [...CURRENCIES].sort((a, b) => b.symbol.length - a.symbol.length)
   for (const c of sorted) {
     if (value.startsWith(c.symbol)) return { code: c.code, amount: value.slice(c.symbol.length) }
+    if (value.endsWith(c.symbol)) return { code: c.code, amount: value.slice(0, -c.symbol.length) }
   }
   return { code: '', amount: value }
 }
@@ -31,6 +32,34 @@ function parsePriceValue(value: string): { code: string; amount: string } {
 function currencySymbol(code: string | undefined, customUnit?: string): string {
   if (code === 'CUSTOM') return customUnit || ''
   return CURRENCIES.find(c => c.code === (code ?? 'KRW'))?.symbol ?? '₩'
+}
+
+function formatPriceNumber(value: string | number | undefined): string {
+  const raw = String(value ?? '')
+  if (!raw) return ''
+  return raw.replace(/\d+/g, digits => Number(digits).toLocaleString())
+}
+
+function formatPriceText(value: string | undefined): string {
+  return formatPriceNumber(value).trim()
+}
+
+type PriceUnitPosition = 'prefix' | 'suffix'
+
+function composePrice(amount: string, unit = '', position: PriceUnitPosition = 'prefix'): string {
+  return position === 'suffix' ? `${amount}${unit}` : `${unit}${amount}`
+}
+
+function formatPriceWithUnit(value: string | undefined, unit = '', position: PriceUnitPosition = 'prefix'): string {
+  const raw = String(value ?? '').trim()
+  if (unit && raw.startsWith(unit)) return formatPriceText(raw) || `${unit}0`
+  if (unit && raw.endsWith(unit)) return formatPriceText(raw) || `0${unit}`
+  const knownUnit = CURRENCIES.some(c => raw.startsWith(c.symbol))
+  const knownSuffixUnit = CURRENCIES.some(c => raw.endsWith(c.symbol))
+  if (knownUnit) return formatPriceText(raw) || '0'
+  if (knownSuffixUnit) return formatPriceText(raw) || '0'
+  const amount = formatPriceNumber(raw).trim() || '0'
+  return unit ? composePrice(amount, unit, position) : amount
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -437,7 +466,7 @@ function drawTicket(d: TicketData, font: string, imgs: Imgs): { dataUrl: string;
   if (d.price) {
     ctx.fillStyle = imgs.photo ? 'rgba(255,255,255,0.92)' : accent
     ctx.font = `bold 11px ${f}`; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'
-    ctx.fillText(d.price, W - pad, PHOTO_H - 8)
+    ctx.fillText(formatPriceText(d.price), W - pad, PHOTO_H - 8)
   }
 
   // ── 제목 (세로 중앙) ──
@@ -531,14 +560,20 @@ function drawGame(d: GameData, font: string, imgs: Imgs): { dataUrl: string; w: 
   return { dataUrl: finish(canvas), w: W, h: H }
 }
 
-function drawReceipt(d: ReceiptData, font: string): { dataUrl: string; w: number; h: number } {
+function drawReceipt(d: ReceiptData, font: string, priceUnitPosition: PriceUnitPosition): { dataUrl: string; w: number; h: number } {
   const W = 220, pad = 16
   const f = cf(font)
   const items = d.items.filter(i => i.name)
   const total = items.reduce((s, i) => s + (Number(i.price.replace(/[^0-9]/g, '')) || 0), 0)
+  const curSym = currencySymbol(d.currency, d.customCurrency)
   const itemFont = `11px ${f}`
   const nameCtx = measureCtx(itemFont)
-  const nameMaxW = W - pad * 2 - 66
+  const priceCtx = measureCtx(itemFont)
+  const priceMaxW = Math.max(
+    58,
+    ...items.map(item => priceCtx.measureText(formatPriceWithUnit(item.price, curSym, priceUnitPosition)).width)
+  )
+  const nameMaxW = W - pad * 2 - priceMaxW - 10
   const itemRows = items.map(item => wrapMultilineLoose(nameCtx, item.name, nameMaxW))
   const itemLineH = 14
   const itemGap = 8
@@ -577,17 +612,16 @@ function drawReceipt(d: ReceiptData, font: string): { dataUrl: string; w: number
     ctx.fillStyle = '#333'; ctx.textAlign = 'left'
     const lines = itemRows[idx] ?? [item.name]
     lines.forEach((line, lineIdx) => ctx.fillText(line, pad, y + lineIdx * itemLineH))
-    ctx.fillStyle = '#555'; ctx.textAlign = 'right'; ctx.fillText(item.price || '0', W - pad, y)
+    ctx.fillStyle = '#555'; ctx.textAlign = 'right'; ctx.fillText(formatPriceWithUnit(item.price, curSym, priceUnitPosition), W - pad, y)
     y += Math.max(1, lines.length) * itemLineH + itemGap
   })
 
   y += 8; ctx.strokeStyle = '#333'; ctx.lineWidth = 1
   ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke(); y += 14
 
-  const curSym = currencySymbol(d.currency, d.customCurrency)
   ctx.fillStyle = '#1a1a1a'; ctx.font = `bold 13px ${f}`
   ctx.textAlign = 'left'; ctx.fillText('합계', pad, y)
-  ctx.textAlign = 'right'; ctx.fillText(`${curSym}${total.toLocaleString()}`, W - pad, y); y += 26
+  ctx.textAlign = 'right'; ctx.fillText(composePrice(total.toLocaleString(), curSym, priceUnitPosition), W - pad, y); y += 26
 
   if (d.footer) { ctx.fillStyle = '#C0B8A8'; ctx.font = `10px ${f}`; ctx.textAlign = 'center'; ctx.fillText(d.footer, W / 2, y) }
   return { dataUrl: finish(canvas), w: W, h: H }
@@ -661,7 +695,7 @@ function drawWishlist(d: WishlistData, font: string, imgs: Imgs): { dataUrl: str
   if (d.price) {
     ctx.fillStyle = navy; ctx.font = `bold 14px ${f}`
     ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText(d.price, pad, y)
+    ctx.fillText(formatPriceText(d.price), pad, y)
   }
   ctx.fillStyle = 'rgba(44,62,80,0.4)'; ctx.font = `9px ${f}`
   ctx.textAlign = 'right'; ctx.textBaseline = 'top'
@@ -799,7 +833,7 @@ function drawTransport(d: TransportData, font: string): { dataUrl: string; w: nu
   const bandMid = bandY + BAND_H / 2
   ctx.fillStyle = '#333'; ctx.font = `bold 10px ${f}`
   ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-  ctx.fillText(d.price || '', pad, bandMid)
+  ctx.fillText(formatPriceText(d.price), pad, bandMid)
   const bcode = `${(seed % 90000) + 10000}-${(seed % 9000) + 1000}-${(seed % 90000) + 10000}-${(seed % 90) + 10}`
   ctx.fillStyle = '#555'; ctx.font = `9px ${f}`
   ctx.textAlign = 'right'; ctx.fillText(bcode, W - pad, bandMid)
@@ -1073,36 +1107,32 @@ function drawCoffeeSimple(d: CoffeeSimpleData, font: string): { dataUrl: string;
   const noteCtx = measureCtx(`10px ${f}`)
   const noteLines = d.note.trim() ? wrapMultilineLoose(noteCtx, d.note, W - pad * 2) : []
   const moodLines = d.mood.trim() ? wrapMultilineLoose(measureCtx(`9px ${f}`), d.mood, W - pad * 2) : []
-  const H = 128 + moodLines.length * 12 + noteLines.length * 14
+  const H = 106 + moodLines.length * 12 + noteLines.length * 14
   const [canvas, ctx] = mk(W, H)
 
   ctx.fillStyle = paper; rrect(ctx, 0, 0, W, H, 12); ctx.fill()
   ctx.strokeStyle = '#E7D8CA'; ctx.lineWidth = 0.8
   rrect(ctx, 0.5, 0.5, W - 1, H - 1, 12); ctx.stroke()
 
-  ctx.fillStyle = '#F4E7D8'
-  rrect(ctx, pad, pad, 44, 44, 10); ctx.fill()
-  ctx.fillStyle = '#6F4A31'; ctx.font = `22px ${f}`
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-  ctx.fillText('☕', pad + 22, pad + 23)
-
   ctx.fillStyle = muted; ctx.font = `bold 7px ${f}`
   ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-  ctx.fillText('COFFEE SCRAP', pad + 54, pad + 4)
-  ctx.fillStyle = ink; ctx.font = `bold 16px ${f}`
-  ctx.fillText(d.menu || '마신 커피', pad + 54, pad + 18)
-  ctx.fillStyle = muted; ctx.font = `9px ${f}`
-  ctx.fillText([d.shop || '카페/브랜드', d.date].filter(Boolean).join(' · '), pad + 54, pad + 39)
+  ctx.fillText('COFFEE SCRAP', pad, pad)
 
   const badge = d.isIced ? 'ICE' : 'HOT'
-  const bx = W - pad - 32, by = pad + 2
+  const bx = W - pad - 32, by = pad - 1
   ctx.fillStyle = d.isIced ? '#E3F2FD' : '#FFF3E0'
   rrect(ctx, bx, by, 32, 16, 5); ctx.fill()
   ctx.fillStyle = d.isIced ? '#1565C0' : '#BF360C'
   ctx.font = `bold 7px ${f}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
   ctx.fillText(badge, bx + 16, by + 8)
 
-  let y = pad + 60
+  ctx.fillStyle = ink; ctx.font = `bold 16px ${f}`
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+  ctx.fillText(d.menu || '마신 커피', pad, pad + 13)
+  ctx.fillStyle = muted; ctx.font = `9px ${f}`
+  ctx.fillText([d.shop || '카페/브랜드', d.date].filter(Boolean).join(' · '), pad, pad + 34)
+
+  let y = pad + 53
   ctx.strokeStyle = line; ctx.lineWidth = 0.7
   ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke()
   y += 12
@@ -2170,12 +2200,12 @@ function drawSkincare(d: SkincareData, font: string): { dataUrl: string; w: numb
   return { dataUrl: finish(canvas), w: W, h: H }
 }
 
-function generate(id: TemplateId, data: AnyData, font: string, imgs: Imgs, profileName?: string): { dataUrl: string; w: number; h: number } {
+function generate(id: TemplateId, data: AnyData, font: string, imgs: Imgs, profileName?: string, priceUnitPosition: PriceUnitPosition = 'prefix'): { dataUrl: string; w: number; h: number } {
   switch (id) {
     case 'baseball':  return drawBaseball(data as BaseballData, font, imgs)
     case 'ticket':    return drawTicket(data as TicketData, font, imgs)
     case 'game':      return drawGame(data as GameData, font, imgs)
-    case 'receipt':   return drawReceipt(data as ReceiptData, font)
+    case 'receipt':   return drawReceipt(data as ReceiptData, font, priceUnitPosition)
     case 'wishlist':  return drawWishlist(data as WishlistData, font, imgs)
     case 'transport': return drawTransport(data as TransportData, font)
     case 'checkin':   return drawCheckin(data as CheckinData, font)
@@ -2226,26 +2256,33 @@ function PriceF({ label, value, onChange, placeholder = '' }: { label: string; v
   const [code, setCode] = useState(parsed.code || 'KRW')
   const [amount, setAmount] = useState(parsed.amount)
   const [customUnit, setCustomUnit] = useState('')
+  const [unitPosition, setUnitPosition] = useState<PriceUnitPosition>('prefix')
 
   useEffect(() => {
-    if (parsed.code) return
     Promise.all([
       api.settings.get('defaultCurrency').catch(() => null),
       api.settings.get('customPriceUnit').catch(() => null),
-    ]).then(([cur, custom]) => {
+      api.settings.get('priceUnitPosition').catch(() => null),
+    ]).then(([cur, custom, position]) => {
+      if (position === 'suffix') setUnitPosition('suffix')
       if (custom) setCustomUnit(custom)
-      if (custom && value.startsWith(custom)) {
+      if (parsed.code) {
+        return
+      } else if (custom && value.startsWith(custom)) {
         setCode('CUSTOM')
         setAmount(value.slice(custom.length))
+      } else if (custom && value.endsWith(custom)) {
+        setCode('CUSTOM')
+        setAmount(value.slice(0, -custom.length))
       } else if (cur) {
         setCode(cur)
       }
     }).catch(() => {})
   }, [])
 
-  const emit = (c: string, a: string) => {
+  const emit = (c: string, a: string, position = unitPosition) => {
     const sym = currencySymbol(c, customUnit)
-    onChange(a ? sym + a : '')
+    onChange(a ? composePrice(a, sym, position) : '')
   }
 
   return (
@@ -2453,9 +2490,17 @@ function ReceiptForm({ d, u }: { d: ReceiptData; u: (p: Partial<ReceiptData>) =>
     u({ items: d.items.map((it, idx) => idx === i ? { ...it, ...p } : it) })
   const currency = d.currency ?? 'KRW'
   const [customUnit, setCustomUnit] = useState(d.customCurrency ?? '')
+  const [unitPosition, setUnitPosition] = useState<PriceUnitPosition>('prefix')
   useEffect(() => {
-    api.settings.get('customPriceUnit').then(v => {
-      if (v && !d.customCurrency) setCustomUnit(v)
+    Promise.all([
+      api.settings.get('customPriceUnit').catch(() => null),
+      api.settings.get('priceUnitPosition').catch(() => null),
+    ]).then(([unit, position]) => {
+      if (position === 'suffix') setUnitPosition('suffix')
+      if (unit && !d.customCurrency) {
+        setCustomUnit(unit)
+        if (currency === 'CUSTOM') u({ customCurrency: unit })
+      }
     }).catch(() => {})
   }, [])
   const curSym = currencySymbol(currency, d.customCurrency || customUnit)
@@ -2466,7 +2511,13 @@ function ReceiptForm({ d, u }: { d: ReceiptData; u: (p: Partial<ReceiptData>) =>
     </Row>
     <div style={{ marginBottom: 9 }}>
       <div style={lbl}>통화</div>
-      <select value={currency} onChange={e => u({ currency: e.target.value })}
+      <select value={currency} onChange={e => {
+        const nextCurrency = e.target.value
+        u({
+          currency: nextCurrency,
+          customCurrency: nextCurrency === 'CUSTOM' ? (d.customCurrency || customUnit) : d.customCurrency
+        })
+      }}
         style={{ ...inp, width: '100%', cursor: 'pointer' }}>
         {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
         {(customUnit || d.customCurrency) && <option value="CUSTOM">사용자 단위 ({d.customCurrency || customUnit})</option>}
@@ -2484,8 +2535,13 @@ function ReceiptForm({ d, u }: { d: ReceiptData; u: (p: Partial<ReceiptData>) =>
         <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
           <input value={it.name} onChange={e => setItem(i, { name: e.target.value })} placeholder="메뉴 이름" style={{ ...inp, flex: 1 }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 0, flexShrink: 0 }}>
-            <span style={{ fontSize: 11, color: '#888', padding: '0 4px', background: '#f0f0f0', border: '1px solid #e0e0e0', borderRight: 'none', borderRadius: '6px 0 0 6px', height: 30, display: 'flex', alignItems: 'center' }}>{curSym}</span>
-            <input value={it.price} onChange={e => setItem(i, { price: e.target.value })} placeholder="0" style={{ ...inp, width: 60, borderRadius: '0 6px 6px 0' }} />
+            {unitPosition === 'prefix' && (
+              <span style={{ fontSize: 11, color: '#888', padding: '0 4px', background: '#f0f0f0', border: '1px solid #e0e0e0', borderRight: 'none', borderRadius: '6px 0 0 6px', height: 30, display: 'flex', alignItems: 'center' }}>{curSym}</span>
+            )}
+            <input value={it.price} onChange={e => setItem(i, { price: e.target.value })} placeholder="0" style={{ ...inp, width: 60, borderRadius: unitPosition === 'prefix' ? '0 6px 6px 0' : '6px 0 0 6px', borderRight: unitPosition === 'suffix' ? 'none' : inp.border }} />
+            {unitPosition === 'suffix' && (
+              <span style={{ fontSize: 11, color: '#888', padding: '0 4px', background: '#f0f0f0', border: '1px solid #e0e0e0', borderRadius: '0 6px 6px 0', height: 30, display: 'flex', alignItems: 'center' }}>{curSym}</span>
+            )}
           </div>
           {d.items.length > 1 && (
             <button onClick={() => u({ items: d.items.filter((_, j) => j !== i) })}
@@ -2985,6 +3041,7 @@ export default function TemplateModal({ globalFont, systemFonts, onConfirm, onCa
   const [generating, setGenerating] = useState(false)
   const [cropPending, setCropPending] = useState<{ src: string; w: number; h: number; resolve: (url: string | null) => void } | null>(null)
   const [globalProfile, setGlobalProfile] = useState<{ name: string; photo: string }>({ name: '', photo: '' })
+  const [priceUnitPosition, setPriceUnitPosition] = useState<PriceUnitPosition>('prefix')
 
   const openCrop = React.useCallback((src: string, frame: { w: number; h: number }): Promise<string | null> => {
     return new Promise(resolve => setCropPending({ src, w: frame.w, h: frame.h, resolve }))
@@ -2999,6 +3056,9 @@ export default function TemplateModal({ globalFont, systemFonts, onConfirm, onCa
         const p = JSON.parse(raw)
         setGlobalProfile({ name: p.name ?? '', photo: p.photo ?? '' })
       } catch {}
+    }).catch(() => {})
+    api.settings.get('priceUnitPosition').then(raw => {
+      if (raw === 'suffix') setPriceUnitPosition('suffix')
     }).catch(() => {})
   }, [])
 
@@ -3025,7 +3085,7 @@ export default function TemplateModal({ globalFont, systemFonts, onConfirm, onCa
       if (globalProfile.photo) {
         try { imgs.userProfile = await loadImg(globalProfile.photo) } catch {}
       }
-      const r = generate(templateId, data, cardFont, imgs, globalProfile.name)
+      const r = generate(templateId, data, cardFont, imgs, globalProfile.name, priceUnitPosition)
       cleanupFont()
       const linkUrl =
         (templateId === 'wishlist' || templateId === 'checkin') && d.link ? d.link :
