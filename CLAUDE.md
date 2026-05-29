@@ -2,6 +2,11 @@
 
 ## Claude 행동 규칙
 - **푸쉬 전 CLAUDE.md 동기화**: `git push` 요청이 오면, 이번 작업에서 변경된 내용(새 기능, 타입 변경, 커맨드 추가, 설정 키 추가 등)이 있을 경우 CLAUDE.md를 먼저 업데이트한 뒤 푸쉬한다.
+- **커밋 전 git 사용자 확인**: 커밋 전 `git config user.name` / `git config user.email`을 확인하고, `RamzThunder` / `ramzwith@gmail.com`이 아니라면 아래 명령으로 수정 후 커밋한다.
+  ```bash
+  git config --global user.name "RamzThunder"
+  git config --global user.email "ramzwith@gmail.com"
+  ```
 
 ## 앱 개요
 개인 디지털 다이어리 데스크톱 앱. 자유 캔버스 꾸미기 스타일.
