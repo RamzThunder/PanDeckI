@@ -753,19 +753,117 @@ fn screenshot_region(lx: i32, ly: i32, lw: u32, lh: u32, path: &str) -> Result<(
 
 #[cfg(target_os = "windows")]
 fn screenshot_region(lx: i32, ly: i32, lw: u32, lh: u32, path: &str) -> Result<(), String> {
-    let path_ps = path.replace('\'', "''");
-    let script = format!(
-        "Add-Type -AssemblyName 'System.Windows.Forms','System.Drawing'; \
-         $b=New-Object System.Drawing.Bitmap({lw},{lh}); \
-         $g=[System.Drawing.Graphics]::FromImage($b); \
-         $g.CopyFromScreen({lx},{ly},0,0,[System.Drawing.Size]::new({lw},{lh})); \
-         $g.Dispose(); $b.Save('{path}',[System.Drawing.Imaging.ImageFormat]::Png); $b.Dispose()",
-        lw = lw, lh = lh, lx = lx, ly = ly, path = path_ps
-    );
-    std::process::Command::new("powershell")
-        .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script])
-        .status()
-        .map_err(|e| e.to_string())?;
+    use std::io::BufWriter;
+    use windows::Win32::Graphics::Gdi::{
+        BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
+        GetDIBits, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+        HGDIOBJ, SRCCOPY,
+    };
+    use windows::Win32::UI::HiDpi::{
+        SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+    };
+
+    let width = i32::try_from(lw).map_err(|_| "region width too large".to_string())?;
+    let height = i32::try_from(lh).map_err(|_| "region height too large".to_string())?;
+    let bytes_len = (lw as usize)
+        .checked_mul(lh as usize)
+        .and_then(|px| px.checked_mul(4))
+        .ok_or("region too large")?;
+
+    unsafe {
+        let prev_dpi = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        let screen_dc = GetDC(None);
+        if screen_dc.is_invalid() {
+            if !prev_dpi.is_invalid() {
+                SetThreadDpiAwarenessContext(prev_dpi);
+            }
+            return Err("GetDC failed".into());
+        }
+
+        let mem_dc = CreateCompatibleDC(Some(screen_dc));
+        if mem_dc.is_invalid() {
+            ReleaseDC(None, screen_dc);
+            if !prev_dpi.is_invalid() {
+                SetThreadDpiAwarenessContext(prev_dpi);
+            }
+            return Err("CreateCompatibleDC failed".into());
+        }
+
+        let bitmap = CreateCompatibleBitmap(screen_dc, width, height);
+        if bitmap.is_invalid() {
+            let _ = DeleteDC(mem_dc);
+            ReleaseDC(None, screen_dc);
+            if !prev_dpi.is_invalid() {
+                SetThreadDpiAwarenessContext(prev_dpi);
+            }
+            return Err("CreateCompatibleBitmap failed".into());
+        }
+
+        let old_obj = SelectObject(mem_dc, HGDIOBJ(bitmap.0));
+        let capture_result = BitBlt(mem_dc, 0, 0, width, height, Some(screen_dc), lx, ly, SRCCOPY);
+        if !old_obj.is_invalid() {
+            SelectObject(mem_dc, old_obj);
+        }
+        ReleaseDC(None, screen_dc);
+
+        if let Err(e) = capture_result {
+            let _ = DeleteObject(HGDIOBJ(bitmap.0));
+            let _ = DeleteDC(mem_dc);
+            if !prev_dpi.is_invalid() {
+                SetThreadDpiAwarenessContext(prev_dpi);
+            }
+            return Err(format!("BitBlt failed: {e}"));
+        }
+
+        let mut info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                biHeight: -height,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bgra = vec![0u8; bytes_len];
+        let lines = GetDIBits(
+            mem_dc,
+            bitmap,
+            0,
+            lh,
+            Some(bgra.as_mut_ptr() as *mut std::ffi::c_void),
+            &mut info,
+            DIB_RGB_COLORS,
+        );
+
+        let _ = DeleteObject(HGDIOBJ(bitmap.0));
+        let _ = DeleteDC(mem_dc);
+        if !prev_dpi.is_invalid() {
+            SetThreadDpiAwarenessContext(prev_dpi);
+        }
+
+        if lines == 0 {
+            return Err("GetDIBits failed".into());
+        }
+
+        for px in bgra.chunks_exact_mut(4) {
+            px.swap(0, 2);
+            px[3] = 255;
+        }
+
+        let file = fs::File::create(path).map_err(|e| e.to_string())?;
+        let writer = BufWriter::new(file);
+        let mut encoder = png::Encoder::new(writer, lw, lh);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut png_writer = encoder.write_header().map_err(|e| e.to_string())?;
+        png_writer
+            .write_image_data(&bgra)
+            .map_err(|e| e.to_string())?;
+    }
+
     Ok(())
 }
 
@@ -902,10 +1000,26 @@ pub fn capture_region_b64(app: AppHandle, x: f64, y: f64, w: f64, h: f64) -> Res
     let win = app.get_webview_window("main").ok_or("window not found")?;
     let scale = win.scale_factor().map_err(|e| e.to_string())?;
     let inner = win.inner_position().map_err(|e| e.to_string())?;
-    let lx = (inner.x as f64 / scale + x).round() as i32;
-    let ly = (inner.y as f64 / scale + y).round() as i32;
-    let lw = w.round().max(1.0) as u32;
-    let lh = h.round().max(1.0) as u32;
+    #[cfg(target_os = "windows")]
+    let (lx, ly, lw, lh) = {
+        // WebView pointer coordinates are logical CSS pixels. The native GDI
+        // capture path receives physical pixels after opting into per-monitor DPI.
+        (
+            (inner.x as f64 + x * scale).round() as i32,
+            (inner.y as f64 + y * scale).round() as i32,
+            (w * scale).round().max(1.0) as u32,
+            (h * scale).round().max(1.0) as u32,
+        )
+    };
+    #[cfg(not(target_os = "windows"))]
+    let (lx, ly, lw, lh) = {
+        (
+            (inner.x as f64 / scale + x).round() as i32,
+            (inner.y as f64 / scale + y).round() as i32,
+            w.round().max(1.0) as u32,
+            h.round().max(1.0) as u32,
+        )
+    };
     let tmp = std::env::temp_dir().join("dida_region_tmp.png");
     screenshot_region(lx, ly, lw, lh, tmp.to_str().ok_or("invalid temp path")?)?;
     let bytes = fs::read(&tmp).map_err(|e| e.to_string())?;

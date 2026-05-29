@@ -739,6 +739,7 @@ version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "dirs 5.0.1",
+ "png 0.17.16",
  "raw-window-handle",
  "reqwest 0.12.28",
  "rusqlite",
@@ -751,6 +752,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-sql",
  "tauri-plugin-updater",
+ "windows",
 ]
 
 [[package]]

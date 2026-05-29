@@ -153,7 +153,7 @@ export interface DailyData {
 - **테마**: 4 프리셋(하늘색·딸기핑크·흑백·다크, 기본=하늘색) + 5 커스텀 슬롯(삭제 가능), CSS 변수 기반 (`--color-primary` 등)
 - **앱 줌**: Cmd+스크롤 또는 설정 슬라이더 (50~150%), settings DB에 영속
 - **PNG 내보내기**: 캔버스를 PNG로 저장 (`save_png` 커맨드)
-- **화면 캡처**: macOS=ObjC FFI(NSView→NSWindow→windowNumber)로 CGWindowID 직접 획득 → `screencapture -l <wid> -x`. Windows=PowerShell GetClientRect+ClientToScreen+CopyFromScreen (WebView2 GPU 호환). 둘 다 지역 캡처 폴백 있음
+- **화면 캡처**: macOS=ObjC FFI(NSView→NSWindow→windowNumber)로 CGWindowID 직접 획득 → `screencapture -l <wid> -x`. Windows=Win32 GDI 직접 호출(GetDC→BitBlt→GetDIBits, `png` 크레이트로 저장), DPI 인식은 `SetThreadDpiAwarenessContext(PER_MONITOR_V2)`. 둘 다 지역 캡처 폴백 있음
 - **백업**: JSON으로 전체 DB 내보내기/불러오기 (트랜잭션으로 원자적 처리)
 - **월간 뷰**: 캘린더 + 목표/버킷리스트/D-Day/프로필
 - **저장**: SQLite, 날짜별 JSON 저장
@@ -280,7 +280,7 @@ open_url
 | 기능 | macOS | Windows |
 |------|-------|---------|
 | 폰트 목록 | Python3 + NSFontManager | PowerShell + InstalledFontCollection |
-| 화면 캡처 | ObjC FFI → windowNumber → screencapture -l | PowerShell GetClientRect+ClientToScreen+CopyFromScreen |
+| 화면 캡처 | ObjC FFI → windowNumber → screencapture -l | Win32 GDI 직접 호출 (GetDC→BitBlt→GetDIBits, png 크레이트, DPI PER_MONITOR_V2) |
 | URL 열기 | `open` 명령 | `cmd /c start` |
 | DB 기본 경로 | iCloud Drive (`~/Library/Mobile Documents/...`) | AppData (`%APPDATA%/com.subinlee.dida/`) |
 
