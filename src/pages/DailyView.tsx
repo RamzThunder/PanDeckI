@@ -7,6 +7,9 @@ import CropModal, { CustomShape } from '../components/CropModal'
 import TemplateModal from '../components/TemplateModal'
 import ReactMarkdown from 'react-markdown'
 import { toPng } from 'html-to-image'
+
+const IS_WINDOWS = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent)
+
 interface Props {
   currentDate: Date
   onPrev: () => void
@@ -2120,18 +2123,26 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
           if (!selEls.length) return null
           const ch = canvasRef.current?.clientHeight ?? 900
           const cw = canvasRef.current?.clientWidth ?? 1600
+          const rect2 = canvasRef.current?.getBoundingClientRect()
+          const ts2 = canvasRef.current && rect2
+            ? canvasRef.current.offsetWidth / rect2.width
+            : 1
           const minX = Math.min(...selEls.map(el => el.x))
           const maxX = Math.max(...selEls.map(el => el.x + el.w))
           const minY = Math.min(...selEls.map(el => el.y))
           const maxY = Math.max(...selEls.map(el => el.y + el.h))
           const boxW = maxX - minX, boxH = maxY - minY
 
-          const TOOLBAR_H = 44, TOOLBAR_W = 610
+          const TOOLBAR_H = 44, TOOLBAR_W = IS_WINDOWS ? 625 : 610
+          const TOOLBAR_PAD_X = 8 * 2 + 2
+          const TOOLBAR_PAD_Y = 6 * 2 + 2
+          const toolbarOuterW = TOOLBAR_W + TOOLBAR_PAD_X
+          const toolbarOuterH = TOOLBAR_H + TOOLBAR_PAD_Y
           let top = maxY + 10
-          if (top + TOOLBAR_H > ch - 8) top = minY - TOOLBAR_H - 10
+          if (top + toolbarOuterH * ts2 > ch - 8) top = minY - toolbarOuterH * ts2 - 10
           top = Math.max(4, top)
           let left = minX
-          if (left + TOOLBAR_W > cw - 8) left = cw - TOOLBAR_W - 8
+          if (left + toolbarOuterW * ts2 > cw - 8) left = cw - toolbarOuterW * ts2 - 8
           left = Math.max(4, left)
 
           const mBtn = (icon: React.ReactNode, title: string, onClick: () => void, active?: boolean) => (
@@ -2190,7 +2201,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
             </div>
 
             {/* 정렬 툴바 */}
-            <div style={{ position: 'absolute', top, left, zIndex: 9000, background: '#fff', borderRadius: 10, boxShadow: '0 4px 20px rgba(0,0,0,0.15)', border: '1px solid var(--color-border)', padding: '6px 8px', display: 'flex', alignItems: 'center', gap: 4 }}
+            <div style={{ position: 'absolute', top, left, zIndex: 100000, background: '#fff', borderRadius: 10, boxShadow: '0 4px 20px rgba(0,0,0,0.15)', border: '1px solid var(--color-border)', padding: '6px 8px', display: 'flex', alignItems: 'center', gap: 4, width: toolbarOuterW, boxSizing: 'border-box', transform: `scale(${ts2})`, transformOrigin: 'top left' }}
               onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
               <span style={{ fontSize: 12, color: 'var(--color-text-muted)', marginRight: 2 }}>{multiIds.length}개</span>
               {sep}
@@ -2255,31 +2266,41 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
 
 {/* Inline floating toolbar */}
         {selectedEl && !editingId && multiIds.length <= 1 && (() => {
-          const ch = canvasRef.current?.clientHeight ?? 900 // 👈 캔버스 높이
-          const cw = canvasRef.current?.clientWidth ?? 1600 // 👈 캔버스 너비
-          
+          const ch = canvasRef.current?.clientHeight ?? 900
+          const cw = canvasRef.current?.clientWidth ?? 1600
+          // appZoom이 1 미만이면 툴바도 같이 작아지는 문제를 막기 위해 역스케일 적용
+          // canvasRef는 부모의 scale(appZoom) 안에 있으므로 offsetWidth/rect.width = 1/appZoom
+          const rect = canvasRef.current?.getBoundingClientRect()
+          const ts = canvasRef.current && rect
+            ? canvasRef.current.offsetWidth / rect.width
+            : 1  // ts = 1/appZoom
+
           const TOOLBAR_H = selectedEl.type === 'text' ? 158 : 44
           const TOOLBAR_W = selectedEl.type === 'text'
-              ? 500
+              ? (IS_WINDOWS ? 510 : 500)
               : selectedEl.type === 'photo'
-                ? 600
-                : 410
-                
+                ? (IS_WINDOWS ? 620 : 600)
+                : (IS_WINDOWS ? 420 : 410)
+          const TOOLBAR_PAD_X = 8 * 2 + 2
+          const TOOLBAR_PAD_Y = 6 * 2 + 2
+          const toolbarOuterW = TOOLBAR_W + TOOLBAR_PAD_X
+          const toolbarOuterH = TOOLBAR_H + TOOLBAR_PAD_Y
+
           // 1. 기본 위치: 개체 아래쪽 (+20px 여유)
           let top = selectedEl.y + selectedEl.h + 20
-          
-          // 2. 캔버스 하단에서 잘릴 것 같으면 개체 위쪽으로 확 뒤집기! (ch 기준)
-          // (위쪽 회전 핸들 -28px을 피하기 위해 -35px 공간 확보)
-          if (top + TOOLBAR_H > ch - 20) {
-            top = selectedEl.y - TOOLBAR_H - 35
+
+          // 2. 캔버스 하단에서 잘릴 것 같으면 개체 위쪽으로 확 뒤집기
+          // 역스케일로 인해 캔버스 좌표계에서 차지하는 외곽 크기는 outer size * ts
+          if (top + toolbarOuterH * ts > ch - 20) {
+            top = selectedEl.y - toolbarOuterH * ts - 35
           }
-          
+
           // 3. 위로 뒤집었는데도 캔버스 맨 위를 뚫고 나간다면 강제로 상단 고정
           if (top < 10) top = 10
-          
+
           // 4. 가로 위치 보정
           let left = selectedEl.x
-          if (left + TOOLBAR_W > cw - 8) left = cw - TOOLBAR_W - 8
+          if (left + toolbarOuterW * ts > cw - 8) left = cw - toolbarOuterW * ts - 8
           left = Math.max(10, left)
 
           const S = { width: 28, height: 28, borderRadius: 6, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 } as const
@@ -2290,7 +2311,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
           const hSep = <div style={{ height: 1, background: 'var(--color-border)' }} />
 
           return (
-            <div style={{ position: 'absolute', top, left, zIndex: 9000, background: '#fff', borderRadius: 10, boxShadow: '0 4px 20px rgba(0,0,0,0.15)', border: '1px solid var(--color-border)', padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 4, width: TOOLBAR_W }}
+            <div style={{ position: 'absolute', top, left, zIndex: 100000, background: '#fff', borderRadius: 10, boxShadow: '0 4px 20px rgba(0,0,0,0.15)', border: '1px solid var(--color-border)', padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 4, width: toolbarOuterW, boxSizing: 'border-box', transform: `scale(${ts})`, transformOrigin: 'top left' }}
               onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
 
               {selectedEl.type === 'text' && (<>
