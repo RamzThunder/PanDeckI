@@ -20,14 +20,8 @@ interface Props {
   onFontScaleChange: (v: number) => void
   fontOffsetY: number
   onFontOffsetYChange: (v: number) => void
-  mosaicIntensity: number
-  onMosaicIntensityChange: (v: number) => void
-  blurIntensity: number
-  onBlurIntensityChange: (v: number) => void
   diaryName: string
   onDiaryNameChange: (name: string) => void
-  gridSpacing: number
-  onGridSpacingChange: (v: number) => void
   onClose: () => void
 }
 
@@ -53,151 +47,7 @@ const COLOR_FIELDS: { key: keyof Theme; label: string }[] = [
   { key: 'border', label: '테두리' },
 ]
 
-type Tab = 'info' | 'display' | 'detail'
-
-const CURRENCIES = [
-  { code: 'KRW', symbol: '₩',   label: '원 (₩)' },
-  { code: 'USD', symbol: '$',   label: '달러 ($)' },
-  { code: 'JPY', symbol: '¥',   label: '엔 (¥)' },
-  { code: 'CNY', symbol: '元',  label: '위안 (元)' },
-  { code: 'GBP', symbol: '£',   label: '파운드 (£)' },
-  { code: 'EUR', symbol: '€',   label: '유로 (€)' },
-  { code: 'HKD', symbol: 'HK$', label: '홍콩달러 (HK$)' },
-  { code: 'THB', symbol: '฿',   label: '바트 (฿)' },
-  { code: 'TWD', symbol: 'NT$', label: '대만달러 (NT$)' },
-  { code: 'SGD', symbol: 'S$',  label: '싱가포르달러 (S$)' },
-]
-
-type ScrapFieldType = 'text' | 'select' | 'boolean' | 'color' | 'number' | 'geocode'
-interface ScrapField { key: string; label: string; type?: ScrapFieldType; options?: string[] }
-
-const SCRAP_TPL_FIELDS: Record<string, ScrapField[]> = {
-  baseball: [
-    { key: 'homeTeam', label: '내 팀', type: 'select', options: ['삼성 라이온즈', 'KIA 타이거즈', 'LG 트윈스', '두산 베어스', 'NC 다이노스', '롯데 자이언츠', 'SSG 랜더스', 'KT 위즈', '한화 이글스', '키움 히어로즈', '울산 웨일즈', '상무 피닉스'] },
-    { key: 'away',    label: '원정팀' },
-    { key: 'venue',   label: '경기장' },
-    { key: 'seat',    label: '좌석' },
-    { key: 'memo',    label: '메모' },
-    { key: 'isAway',  label: '원정 경기', type: 'boolean' },
-  ],
-  ticket: [
-    { key: 'category', label: '카테고리', type: 'select', options: ['영화', '공연', '전시', '스포츠', '기타'] },
-    { key: 'venue',    label: '장소' },
-    { key: 'seat',     label: '좌석' },
-    { key: 'price',    label: '가격' },
-  ],
-  game: [
-    { key: 'title',      label: '게임 이름' },
-    { key: 'oneiner',    label: '한줄평' },
-    { key: 'frameColor', label: '프레임 색상', type: 'color' },
-  ],
-  receipt: [
-    { key: 'store',  label: '가게 이름' },
-    { key: 'footer', label: '하단 문구' },
-  ],
-  wishlist: [
-    { key: 'item',      label: '아이템 이름' },
-    { key: 'price',     label: '가격' },
-    { key: 'oneiner',   label: '한줄평' },
-    { key: 'link',      label: '링크 URL' },
-    { key: 'wishScore', label: '원하는 정도 (1~5)', type: 'number' },
-  ],
-  transport: [
-    { key: 'type',          label: '교통 수단', type: 'select', options: ['KTX', '비행기', '버스', '지하철', '배', '기타'] },
-    { key: 'typeLabel',     label: '호선 / 노선명' },
-    { key: 'from',          label: '출발지' },
-    { key: 'to',            label: '도착지' },
-    { key: 'seat',          label: '좌석' },
-    { key: 'price',         label: '가격' },
-    { key: 'vehicleNumber', label: '차량 번호' },
-  ],
-  checkin: [
-    { key: 'place',      label: '장소 이름' },
-    { key: 'category',   label: '카테고리' },
-    { key: 'address',    label: '주소' },
-    { key: 'purpose',    label: '방문 목적' },
-    { key: 'companions', label: '동행인' },
-    { key: 'memo',       label: '메모' },
-    { key: 'rating',     label: '별점 (0~5)', type: 'number' },
-    { key: 'link',       label: '링크 URL' },
-  ],
-  coffee: [
-    { key: 'roastery',  label: '로스터리' },
-    { key: 'bean',      label: '원두' },
-    { key: 'equipment', label: '추출 도구' },
-    { key: 'beanGrams', label: '원두 (g)',    type: 'number' },
-    { key: 'waterMl',   label: '물 (ml)',     type: 'number' },
-    { key: 'brewTime',  label: '추출 시간(초)', type: 'number' },
-    { key: 'note',      label: '노트' },
-    { key: 'isIced',    label: '아이스', type: 'boolean' },
-  ],
-  food_note: [
-    { key: 'dish',       label: '음식 이름' },
-    { key: 'restaurant', label: '식당 이름' },
-    { key: 'comment',    label: '한줄평' },
-    { key: 'matColor',   label: '매트 색상', type: 'color' },
-    { key: 'photoPlaceholder', label: '빈 사진 안내 문구' },
-    { key: 'photoPlaceholderSize', label: '빈 사진 안내 폰트 크기', type: 'number' },
-  ],
-  youtube: [
-    { key: 'impression', label: '감상평' },
-  ],
-  quote: [
-    { key: 'source', label: '출처' },
-    { key: 'author', label: '작가/저자' },
-    { key: 'memo',   label: '메모' },
-    { key: 'layout', label: '레이아웃', type: 'select', options: ['quote', 'manuscript'] },
-  ],
-  music: [
-    { key: 'artist', label: '아티스트' },
-    { key: 'lyric',  label: '가사' },
-  ],
-  makeup: [
-    { key: 'sun',               label: '선크림' },
-    { key: 'base',              label: '베이스' },
-    { key: 'shading',           label: '쉐이딩' },
-    { key: 'eyeShadow',         label: '아이섀도우' },
-    { key: 'eyeLiner',          label: '아이라이너' },
-    { key: 'eyeMascara',        label: '마스카라' },
-    { key: 'underShadow',       label: '언더 섀도우' },
-    { key: 'underMascara',      label: '언더 마스카라' },
-    { key: 'underHighlighter',  label: '언더 하이라이터' },
-    { key: 'highlighter',       label: '하이라이터' },
-    { key: 'blush',             label: '블러셔' },
-    { key: 'lip',               label: '립' },
-    { key: 'mood',              label: '무드' },
-    { key: 'comment',           label: '코멘트' },
-    { key: 'rating',            label: '만족도 (1~5)', type: 'number' },
-  ],
-  skincare: [
-    { key: 'weatherRegion', label: '날씨 지역', type: 'geocode' },
-    { key: 'time',      label: 'AM / PM', type: 'select', options: ['AM', 'PM'] },
-    { key: 'condition', label: '피부 컨디션' },
-    { key: 'weather',   label: '날씨' },
-    { key: 'toner',     label: '토너' },
-    { key: 'serum',     label: '세럼' },
-    { key: 'cream',     label: '크림' },
-    { key: 'special',   label: '스페셜 케어' },
-    { key: 'memo',      label: '메모' },
-  ],
-}
-
-const SCRAP_TPL_LIST = [
-  { id: 'baseball',  label: '야구 직관' },
-  { id: 'ticket',    label: '티켓' },
-  { id: 'game',      label: '게임' },
-  { id: 'receipt',   label: '영수증' },
-  { id: 'wishlist',  label: '위시리스트' },
-  { id: 'transport', label: '교통수단' },
-  { id: 'checkin',   label: '체크인' },
-  { id: 'coffee',    label: '커피' },
-  { id: 'food_note', label: '먹은 것' },
-  { id: 'youtube',   label: '유튜브' },
-  { id: 'quote',     label: '문장 수집' },
-  { id: 'music',     label: '음악' },
-  { id: 'makeup',    label: '메이크업' },
-  { id: 'skincare',  label: '기초 케어' },
-]
+type Tab = 'info' | 'display'
 
 export default function SettingsPanel({
   activeThemeId, onThemeChange,
@@ -206,10 +56,7 @@ export default function SettingsPanel({
   systemFonts,
   fontScale, onFontScaleChange,
   fontOffsetY, onFontOffsetYChange,
-  mosaicIntensity, onMosaicIntensityChange,
-  blurIntensity, onBlurIntensityChange,
   diaryName, onDiaryNameChange,
-  gridSpacing, onGridSpacingChange,
   onClose,
 }: Props): JSX.Element {
   const [tab, setTab] = useState<Tab>('info')
@@ -221,20 +68,12 @@ export default function SettingsPanel({
   const [fontSearch, setFontSearch] = useState('')
   const [showFontList, setShowFontList] = useState(false)
   const [recentColors, setRecentColors] = useState<Record<string, string[]>>({})
-  const [allDefaults, setAllDefaults] = useState<Record<string, Record<string, string>>>({})
-  const [defaultCurrency, setDefaultCurrency] = useState('KRW')
-  const [customPriceUnit, setCustomPriceUnit] = useState('')
-  const [priceUnitPosition, setPriceUnitPosition] = useState<'prefix' | 'suffix'>('prefix')
-  const [selectedScrapTpl, setSelectedScrapTpl] = useState<string | null>(null)
   const [dbPath, setDbPath] = useState('')
   const [dbPending, setDbPending] = useState(false)
   const [appVersion, setAppVersion] = useState('')
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [updateMsg, setUpdateMsg] = useState('')
   const [recentFonts, setRecentFonts] = useState<string[]>([])
-  const [geoQuery, setGeoQuery] = useState('')
-  const [geoResults, setGeoResults] = useState<Array<{ name: string; lat: number; lng: number; country: string; admin1?: string }>>([])
-  const [geoSearching, setGeoSearching] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -250,21 +89,6 @@ export default function SettingsPanel({
 
       const rawRecentFonts = await api.settings.get('recentFonts').catch(() => null)
       if (rawRecentFonts) try { setRecentFonts(JSON.parse(rawRecentFonts)) } catch {}
-
-      const rawScrap = await api.settings.get('scrap_defaults').catch(() => null)
-      if (rawScrap) try {
-        const parsed = JSON.parse(rawScrap)
-        const { _currency, ...rest } = parsed
-        if (_currency) setDefaultCurrency(_currency)
-        setAllDefaults(rest)
-      } catch {}
-
-      const rawCurrency = await api.settings.get('defaultCurrency').catch(() => null)
-      if (rawCurrency) setDefaultCurrency(rawCurrency)
-      const rawCustomPriceUnit = await api.settings.get('customPriceUnit').catch(() => null)
-      if (rawCustomPriceUnit) setCustomPriceUnit(rawCustomPriceUnit)
-      const rawPriceUnitPosition = await api.settings.get('priceUnitPosition').catch(() => null)
-      if (rawPriceUnitPosition === 'suffix') setPriceUnitPosition('suffix')
 
       const path = await api.db.getPath().catch(() => '')
       setDbPath(path)
@@ -283,7 +107,7 @@ export default function SettingsPanel({
       if (!update) {
         setUpdateMsg('최신 버전입니다.')
       } else {
-        const yes = await ask(`새 버전 ${update.version}이 있습니다.\n지금 업데이트 하시겠습니까?`, { title: 'dida 업데이트', kind: 'info' })
+        const yes = await ask(`새 버전 ${update.version}이 있습니다.\n지금 업데이트 하시겠습니까?`, { title: 'PanDeckI 업데이트', kind: 'info' })
         if (yes) { await update.downloadAndInstall(); await relaunch() }
         else { setUpdateMsg('업데이트를 취소했습니다.') }
       }
@@ -340,18 +164,6 @@ export default function SettingsPanel({
     setEditIdx(null)
   }
 
-  const searchGeo = async (q: string) => {
-    if (!q.trim()) { setGeoResults([]); return }
-    setGeoSearching(true)
-    try {
-      const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q.trim())}&count=5&language=ko`
-      const raw = await api.http.fetchText(url)
-      const json = JSON.parse(raw) as { results?: Array<{ name: string; latitude: number; longitude: number; country: string; admin1?: string }> }
-      setGeoResults((json.results ?? []).map(r => ({ name: r.name, lat: r.latitude, lng: r.longitude, country: r.country, admin1: r.admin1 })))
-    } catch { setGeoResults([]) }
-    setGeoSearching(false)
-  }
-
   const filteredFonts = fontSearch
     ? systemFonts.filter(f => f.toLowerCase().includes(fontSearch.toLowerCase()))
     : systemFonts
@@ -382,7 +194,7 @@ export default function SettingsPanel({
 
         {/* Tabs */}
         <div className="flex shrink-0" style={{ borderBottom: '1px solid var(--color-border)' }}>
-          {([['info', '정보'], ['display', '화면'], ['detail', '세부설정']] as const).map(([id, label]) => (
+          {([['info', '정보'], ['display', '화면']] as const).map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)}
               className="flex-1 text-xs py-2 font-medium"
               style={{
@@ -419,13 +231,13 @@ export default function SettingsPanel({
                 type="text"
                 value={diaryName}
                 onChange={e => onDiaryNameChange(e.target.value)}
-                placeholder="dida"
+                placeholder="PanDeckI"
                 className="w-full text-xs px-3 py-2 rounded-lg outline-none"
                 style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }}
               />
               <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
                 내보내기 파일명에 사용돼요.
-                <p></p>(미리보기: {(diaryName || 'dida').replace(/\s+/g, '_')}_260524_2156.png)
+                <p></p>(미리보기: {(diaryName || 'PanDeckI').replace(/\s+/g, '_')}_260524_2156.png)
               </p>
             </section>
 
@@ -666,255 +478,6 @@ export default function SettingsPanel({
                 })}
               </div>
             </section>
-          </div>
-        )}
-
-        {/* Tab: 세부설정 */}
-        {tab === 'detail' && (
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="flex-1 p-4 flex flex-col gap-5 overflow-y-auto">
-              <section>
-                <p className="text-xs font-semibold mb-3" style={{ color: 'var(--color-text-muted)' }}>캔버스 그리드</p>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs" style={{ color: 'var(--color-text)' }}>격자 간격</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold" style={{ color: 'var(--color-text-muted)' }}>{gridSpacing}px</span>
-                      <button onClick={() => onGridSpacingChange(40)} className="text-xs hover:opacity-70"
-                        style={{ color: 'var(--color-text-muted)' }}>초기화</button>
-                    </div>
-                  </div>
-                  <input type="range" min={10} max={100} step={5} value={gridSpacing}
-                    onChange={e => onGridSpacingChange(Number(e.target.value))}
-                    className="w-full cursor-pointer" />
-                  <div className="flex justify-between mt-0.5">
-                    <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>좁게</span>
-                    <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>넓게</span>
-                  </div>
-                </div>
-              </section>
-
-              <section>
-                <p className="text-xs font-semibold mb-3" style={{ color: 'var(--color-text-muted)' }}>유령 모드 효과</p>
-                <div className="flex flex-col gap-4">
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs" style={{ color: 'var(--color-text)' }}>모자이크 강도</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold" style={{ color: 'var(--color-text-muted)' }}>{mosaicIntensity}</span>
-                        <button onClick={() => onMosaicIntensityChange(14)} className="text-xs hover:opacity-70"
-                          style={{ color: 'var(--color-text-muted)' }}>초기화</button>
-                      </div>
-                    </div>
-                    <input type="range" min={4} max={40} step={2} value={mosaicIntensity}
-                      onChange={e => onMosaicIntensityChange(Number(e.target.value))}
-                      className="w-full cursor-pointer" />
-                    <div className="flex justify-between mt-0.5">
-                      <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>세밀하게</span>
-                      <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>굵게</span>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs" style={{ color: 'var(--color-text)' }}>블러 강도</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold" style={{ color: 'var(--color-text-muted)' }}>{blurIntensity}px</span>
-                        <button onClick={() => onBlurIntensityChange(12)} className="text-xs hover:opacity-70"
-                          style={{ color: 'var(--color-text-muted)' }}>초기화</button>
-                      </div>
-                    </div>
-                    <input type="range" min={2} max={40} step={1} value={blurIntensity}
-                      onChange={e => onBlurIntensityChange(Number(e.target.value))}
-                      className="w-full cursor-pointer" />
-                    <div className="flex justify-between mt-0.5">
-                      <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>약하게</span>
-                      <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>강하게</span>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              <section>
-                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>스크랩 옵션</p>
-                <div className="mb-3">
-                  <p className="text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>기본 통화</p>
-                  <select
-                    value={defaultCurrency}
-                    onChange={e => {
-                      setDefaultCurrency(e.target.value)
-                      api.settings.set('defaultCurrency', e.target.value).catch(() => {})
-                    }}
-                    className="w-full text-xs px-2 py-1.5 rounded-lg outline-none"
-                    style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }}>
-                    {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
-                  </select>
-                </div>
-                <div className="mb-3">
-                  <p className="text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>사용자 가격 단위</p>
-                  <input
-                    value={customPriceUnit}
-                    onChange={e => {
-                      setCustomPriceUnit(e.target.value)
-                      api.settings.set('customPriceUnit', e.target.value).catch(() => {})
-                    }}
-                    placeholder="예: 포인트, 알, 잔"
-                    className="w-full text-xs px-2 py-1.5 rounded-lg outline-none"
-                    style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }} />
-                </div>
-                <div className="mb-3">
-                  <p className="text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>통화 단위 위치</p>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {([
-                      { id: 'prefix' as const, label: '앞에 표시', sample: '₩12,000' },
-                      { id: 'suffix' as const, label: '뒤에 표시', sample: '12,000원' },
-                    ]).map(opt => (
-                      <button
-                        key={opt.id}
-                        onClick={() => {
-                          setPriceUnitPosition(opt.id)
-                          api.settings.set('priceUnitPosition', opt.id).catch(() => {})
-                        }}
-                        className="text-xs px-2 py-1.5 rounded-lg font-medium"
-                        style={{
-                          border: `1px solid ${priceUnitPosition === opt.id ? 'var(--color-primary)' : 'var(--color-border)'}`,
-                          background: priceUnitPosition === opt.id ? 'var(--color-primary-light)' : 'white',
-                          color: priceUnitPosition === opt.id ? 'var(--color-primary-dark)' : 'var(--color-text-muted)',
-                          cursor: 'pointer',
-                        }}
-                        title={opt.sample}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {/* Template picker */}
-                <div className="flex flex-wrap gap-1.5 mb-3">
-                  {SCRAP_TPL_LIST.map(t => (
-                    <button key={t.id} onClick={() => setSelectedScrapTpl(t.id)}
-                      className="text-xs px-2 py-1 rounded-full"
-                      style={{
-                        background: selectedScrapTpl === t.id ? 'var(--color-primary)' : 'var(--color-primary-light)',
-                        color: selectedScrapTpl === t.id ? '#fff' : 'var(--color-primary-dark)',
-                        border: 'none', cursor: 'pointer',
-                      }}>
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-                {!selectedScrapTpl ? (
-                  <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                    카드를 선택하면 기본값을 설정할 수 있어요.
-                  </p>
-                ) : (SCRAP_TPL_FIELDS[selectedScrapTpl]?.length ?? 0) === 0 ? (
-                  <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                    이 카드는 설정할 기본값이 없어요.
-                  </p>
-                ) : (
-                  <div className="flex flex-col gap-3">
-                    {SCRAP_TPL_FIELDS[selectedScrapTpl].map((field) => {
-                      const { key, label, type = 'text', options } = field
-                      const val = allDefaults[selectedScrapTpl]?.[key] ?? ''
-                      const setVal = (v: string) => {
-                        const next = { ...allDefaults, [selectedScrapTpl]: { ...allDefaults[selectedScrapTpl], [key]: v } }
-                        setAllDefaults(next)
-                        api.settings.set('scrap_defaults', JSON.stringify(next)).catch(() => {})
-                      }
-                      return (
-                        <div key={key}>
-                          <p className="text-xs font-semibold mb-1" style={{ color: 'var(--color-text-muted)' }}>{label}</p>
-                          {type === 'boolean' ? (
-                            <button
-                              onClick={() => setVal(val === 'true' ? 'false' : 'true')}
-                              className="text-xs px-3 py-1 rounded-full font-medium"
-                              style={{
-                                background: val === 'true' ? 'var(--color-primary)' : 'var(--color-primary-light)',
-                                color: val === 'true' ? '#fff' : 'var(--color-primary-dark)',
-                                border: '1px solid var(--color-primary)',
-                              }}>
-                              {val === 'true' ? 'ON' : 'OFF'}
-                            </button>
-                          ) : type === 'select' ? (
-                            <select
-                              value={val}
-                              onChange={e => setVal(e.target.value)}
-                              className="w-full text-xs px-2 py-1.5 rounded-lg outline-none"
-                              style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }}>
-                              <option value="">— 기본값 없음 —</option>
-                              {options?.map(o => <option key={o} value={o}>{o}</option>)}
-                            </select>
-                          ) : type === 'color' ? (
-                            <div className="flex items-center gap-2">
-                              <input type="color" value={val || '#ffffff'}
-                                onChange={e => setVal(e.target.value)}
-                                className="w-8 h-7 rounded cursor-pointer border-0 p-0"
-                                style={{ border: '1px solid var(--color-border)' }} />
-                              <input type="text" value={val}
-                                onChange={e => setVal(e.target.value)}
-                                placeholder="#ffffff"
-                                className="flex-1 text-xs px-2 py-1.5 rounded-lg outline-none font-mono"
-                                style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }} />
-                            </div>
-                          ) : type === 'number' ? (
-                            <input
-                              type="number"
-                              value={val}
-                              onChange={e => setVal(e.target.value)}
-                              className="w-full text-xs px-2 py-1.5 rounded-lg outline-none"
-                              style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }} />
-                          ) : type === 'geocode' ? (
-                            <div>
-                              {val && (() => {
-                                try {
-                                  const g = JSON.parse(val)
-                                  return <p className="text-xs mb-1.5 font-medium" style={{ color: 'var(--color-text)' }}>{g.name}{g.admin1 ? `, ${g.admin1}` : ''} <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>({g.country})</span></p>
-                                } catch { return <p className="text-xs mb-1.5" style={{ color: 'var(--color-text)' }}>{val}</p> }
-                              })()}
-                              <div className="flex gap-1 mb-1">
-                                <input
-                                  type="text"
-                                  value={geoQuery}
-                                  onChange={e => setGeoQuery(e.target.value)}
-                                  onKeyDown={e => { if (e.key === 'Enter') searchGeo(geoQuery) }}
-                                  placeholder="도시 이름으로 검색"
-                                  className="flex-1 text-xs px-2 py-1.5 rounded-lg outline-none"
-                                  style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }} />
-                                <button
-                                  onClick={() => searchGeo(geoQuery)}
-                                  disabled={geoSearching}
-                                  className="text-xs px-2 py-1.5 rounded-lg"
-                                  style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)', cursor: geoSearching ? 'default' : 'pointer', opacity: geoSearching ? 0.6 : 1 }}>
-                                  {geoSearching ? '…' : '검색'}
-                                </button>
-                              </div>
-                              {geoResults.length > 0 && (
-                                <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--color-border)' }}>
-                                  {geoResults.map((r, i) => (
-                                    <button key={i}
-                                      onClick={() => { setVal(JSON.stringify({ name: r.name, lat: r.lat, lng: r.lng, country: r.country, admin1: r.admin1 })); setGeoResults([]); setGeoQuery('') }}
-                                      className="w-full text-left text-xs px-2 py-1.5 hover:bg-pink-50"
-                                      style={{ borderBottom: i < geoResults.length - 1 ? '1px solid var(--color-border)' : 'none', color: 'var(--color-text)', background: 'white', display: 'block' }}>
-                                      {r.name}{r.admin1 ? `, ${r.admin1}` : ''} <span style={{ color: 'var(--color-text-muted)' }}>{r.country}</span>
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <input
-                              type="text"
-                              value={val}
-                              onChange={e => setVal(e.target.value)}
-                              className="w-full text-xs px-2 py-1.5 rounded-lg outline-none"
-                              style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }} />
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </section>
-            </div>
           </div>
         )}
 

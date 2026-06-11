@@ -112,12 +112,12 @@ export const api = {
   },
   backup: {
     async export(): Promise<void> {
-      const path = await dialogSave({ title: '백업 파일 저장', filters: [{ name: 'dida 백업', extensions: ['json'] }] })
+      const path = await dialogSave({ title: '백업 파일 저장', filters: [{ name: 'PanDeckI 백업', extensions: ['json'] }] })
       if (!path) return
       await invoke('backup_export_to', { path })
     },
     async import(): Promise<void> {
-      const path = await dialogOpen({ title: '백업 파일 불러오기', filters: [{ name: 'dida 백업', extensions: ['json'] }], multiple: false })
+      const path = await dialogOpen({ title: '백업 파일 불러오기', filters: [{ name: 'PanDeckI 백업', extensions: ['json'] }], multiple: false })
       if (!path) return
       const filePath = Array.isArray(path) ? path[0] : path
       await invoke('backup_import_from', { path: filePath })

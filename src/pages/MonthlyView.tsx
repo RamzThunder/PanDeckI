@@ -166,7 +166,7 @@ export default function MonthlyView({ currentDate, onPrev, onNext, onDayClick, o
       const dd  = String(now.getDate()).padStart(2, '0')
       const hh  = String(now.getHours()).padStart(2, '0')
       const min = String(now.getMinutes()).padStart(2, '0')
-      const safeName = (diaryName || 'dida').replace(/\s+/g, '_')
+      const safeName = (diaryName || 'PanDeckI').replace(/\s+/g, '_')
       const filename = `${safeName}_${yy}${mm}${dd}_${hh}${min}.png`
       setExportPreview({ dataUrl: `data:image/png;base64,${b64}`, filename })
     }

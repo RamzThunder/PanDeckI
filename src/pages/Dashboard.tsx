@@ -23,6 +23,7 @@ interface Props {
   onSelectCategory: (category: string) => void
   onAddCategory: (name: string) => void
   onRenameCategory: (oldName: string, newName: string) => void
+  onMoveCategory: (name: string, direction: -1 | 1) => void
   onDeleteCategory: (name: string) => void
 }
 
@@ -59,10 +60,6 @@ function PreviewElement({ element }: { element: CanvasEl }): JSX.Element {
     return <span className="preview-element preview-video" style={style}>▶</span>
   }
 
-  if (element.type === 'card') {
-    return <span className="preview-element preview-card" style={style}>게시물</span>
-  }
-
   return (
     <span
       className="preview-element preview-text"
@@ -92,7 +89,7 @@ function BoardPreview({ board, data }: { board: BoardInfo; data?: DailyData | nu
   )
 }
 
-export default function Dashboard({ boards, onCreate, onOpen, onDelete, categories, category, createRequest, onCreateRequestHandled, onSelectCategory, onAddCategory, onRenameCategory, onDeleteCategory }: Props): JSX.Element {
+export default function Dashboard({ boards, onCreate, onOpen, onDelete, categories, category, createRequest, onCreateRequestHandled, onSelectCategory, onAddCategory, onRenameCategory, onMoveCategory, onDeleteCategory }: Props): JSX.Element {
   const [creating, setCreating] = useState(false)
   const [title, setTitle] = useState('')
   const [newCategory, setNewCategory] = useState(categories[0] ?? DEFAULT_CATEGORIES[0])
@@ -144,10 +141,9 @@ export default function Dashboard({ boards, onCreate, onOpen, onDelete, categori
     const names = category === '전체'
       ? [...categories, ...new Set(filteredBoards.map(board => board.category).filter(item => !categories.includes(item)))]
       : [category]
-    return names
-      .map(name => ({ name, boards: filteredBoards.filter(board => board.category === name) }))
-      .filter(group => group.boards.length > 0)
-  }, [category, filteredBoards, categories])
+    const result = names.map(name => ({ name, boards: filteredBoards.filter(board => board.category === name) }))
+    return query.trim() ? result.filter(group => group.boards.length > 0) : result
+  }, [category, filteredBoards, categories, query])
 
   const openCreate = (targetCategory = category === '전체' ? (categories[0] ?? DEFAULT_CATEGORIES[0]) : category) => {
     setNewCategory(targetCategory)
@@ -175,22 +171,22 @@ export default function Dashboard({ boards, onCreate, onOpen, onDelete, categori
         <header className="dashboard-header">
           <div>
             <p>대시보드</p>
-            <h1>{category === '전체' ? '모든 판떼기' : category}</h1>
+            <h1>{category === '전체' ? '모든 판' : category}</h1>
           </div>
           <div className="dashboard-tools">
-            <label className="dashboard-search"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="판떼기 검색" />{query && <button onClick={() => setQuery('')}>×</button>}</label>
+            <label className="dashboard-search"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="판 검색" />{query && <button onClick={() => setQuery('')}>×</button>}</label>
             <select value={sortMode} onChange={event => setSortMode(event.target.value as SortMode)}>
               <option value="updated">최근 사용순</option>
               <option value="created">최근 생성순</option>
               <option value="title">이름순</option>
             </select>
-            <button className="header-create-button" onClick={() => openCreate()}>+ 새 판떼기</button>
+            <button className="header-create-button" onClick={() => openCreate()}>+ 새 판</button>
           </div>
         </header>
 
         <section className="dashboard-category-bar">
           <button className={category === '전체' ? 'active' : ''} onClick={() => onSelectCategory('전체')}>전체 <small>{boards.length}</small></button>
-          {categories.map(item => editingCategory === item ? <input key={item} autoFocus value={categoryDraft} onChange={event => setCategoryDraft(event.target.value)} onBlur={submitCategory} onKeyDown={event => { if (event.key === 'Enter') submitCategory(); if (event.key === 'Escape') setEditingCategory(null) }} /> : <div className="dashboard-category-chip" key={item}><button className={category === item ? 'active' : ''} onClick={() => onSelectCategory(item)}>{item} <small>{counts[item] ?? 0}</small></button><span><button title="이름 변경" onClick={() => { setEditingCategory(item); setCategoryDraft(item) }}>✎</button><button title="삭제" disabled={categories.length <= 1} onClick={() => onDeleteCategory(item)}>×</button></span></div>)}
+          {categories.map(item => <button key={item} className={category === item ? 'active' : ''} onClick={() => onSelectCategory(item)}>{item} <small>{counts[item] ?? 0}</small></button>)}
           {editingCategory === '__new__' ? <input autoFocus value={categoryDraft} placeholder="새 카테고리" onChange={event => setCategoryDraft(event.target.value)} onBlur={submitCategory} onKeyDown={event => { if (event.key === 'Enter') submitCategory(); if (event.key === 'Escape') setEditingCategory(null) }} /> : <button className="category-add-chip" onClick={() => { setEditingCategory('__new__'); setCategoryDraft('') }}>+ 카테고리</button>}
         </section>
 
@@ -199,8 +195,20 @@ export default function Dashboard({ boards, onCreate, onOpen, onDelete, categori
             {groups.map(group => (
               <section className="board-group" key={group.name}>
                 <header>
-                  <div><h2>{group.name}</h2><span>{group.boards.length}개</span></div>
-                  <button onClick={() => openCreate(group.name)}>+ 추가</button>
+                  <div className="board-group-title">
+                    {editingCategory === group.name
+                      ? <input autoFocus value={categoryDraft} onChange={event => setCategoryDraft(event.target.value)} onBlur={submitCategory} onKeyDown={event => { if (event.key === 'Enter') submitCategory(); if (event.key === 'Escape') { setEditingCategory(null); setCategoryDraft('') } }} />
+                      : <h2>{group.name}</h2>}
+                    <span>{group.boards.length}개</span>
+                  </div>
+                  <div className="board-group-actions">
+                    {categories.includes(group.name) && <>
+                      <button title="카테고리 이름 변경" onClick={() => { setEditingCategory(group.name); setCategoryDraft(group.name) }}>이름 변경</button>
+                      <button className="order-button" title="위로 이동" disabled={categories.indexOf(group.name) === 0} onClick={() => onMoveCategory(group.name, -1)}>↑</button>
+                      <button className="order-button" title="아래로 이동" disabled={categories.indexOf(group.name) === categories.length - 1} onClick={() => onMoveCategory(group.name, 1)}>↓</button>
+                      <button className="delete-category-button" title="카테고리 삭제" disabled={categories.length <= 1} onClick={() => onDeleteCategory(group.name)}>삭제</button>
+                    </>}
+                  </div>
                 </header>
                 <div className="board-grid">
                   {group.boards.map(board => (
@@ -208,20 +216,20 @@ export default function Dashboard({ boards, onCreate, onOpen, onDelete, categori
                       <BoardPreview board={board} data={previews[board.id]} />
                       <div className="board-card-info">
                         <div><h3>{board.title}</h3><p>{relativeDate(board.updatedAt)}</p></div>
-                        <button title="판떼기 삭제" onClick={event => { event.stopPropagation(); onDelete(board) }}>×</button>
+                        <button title="판 삭제" onClick={event => { event.stopPropagation(); onDelete(board) }}>×</button>
                       </div>
                     </article>
                   ))}
-                  <button className="board-card add-card" onClick={() => openCreate(group.name)}><span>+</span><strong>새 판떼기</strong></button>
+                  <button className="board-card add-card" onClick={() => openCreate(group.name)}><span>+</span><strong>새 판</strong></button>
                 </div>
               </section>
             ))}
           </div>
         ) : (
           <section className="empty-dashboard">
-            <span>+</span><h2>{query ? '검색 결과가 없어요' : '아직 판떼기가 없어요'}</h2>
-            <p>{query ? '다른 검색어를 입력해보세요.' : '수업과 학급 운영에 필요한 첫 판떼기를 만들어보세요.'}</p>
-            {!query && <button onClick={() => openCreate()}>새 판떼기 만들기</button>}
+            <span>+</span><h2>{query ? '검색 결과가 없어요' : '아직 판이 없어요'}</h2>
+            <p>{query ? '다른 검색어를 입력해보세요.' : '수업과 학급 운영에 필요한 첫 판을 만들어보세요.'}</p>
+            {!query && <button onClick={() => openCreate()}>새 판 만들기</button>}
           </section>
         )}
 
@@ -229,11 +237,11 @@ export default function Dashboard({ boards, onCreate, onOpen, onDelete, categori
       {creating && (
         <div className="create-board-backdrop" onClick={() => setCreating(false)}>
           <section className="create-board-modal" onClick={event => event.stopPropagation()}>
-            <header><div><small>새로 만들기</small><h2>새 판떼기</h2></div><button onClick={() => setCreating(false)}>×</button></header>
-            <label>판떼기 이름<input autoFocus value={title} onChange={event => setTitle(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') create() }} placeholder="예: 3학년 2반 아침 활동" /></label>
+            <header><div><small>새로 만들기</small><h2>새 판</h2></div><button onClick={() => setCreating(false)}>×</button></header>
+            <label>판 이름<input autoFocus value={title} onChange={event => setTitle(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') create() }} placeholder="예: 3학년 2반 아침 활동" /></label>
             <label>카테고리<select value={newCategory} onChange={event => setNewCategory(event.target.value)}>{categories.map(item => <option key={item}>{item}</option>)}</select></label>
             <div className="accent-picker"><span>대표 색상</span><div>{ACCENTS.map(color => <button key={color} className={accent === color ? 'active' : ''} style={{ background: color }} onClick={() => setAccent(color)} />)}</div></div>
-            <footer><button onClick={() => setCreating(false)}>취소</button><button className="primary" disabled={!title.trim()} onClick={create}>판떼기 만들기</button></footer>
+            <footer><button onClick={() => setCreating(false)}>취소</button><button className="primary" disabled={!title.trim()} onClick={create}>판 만들기</button></footer>
           </section>
         </div>
       )}

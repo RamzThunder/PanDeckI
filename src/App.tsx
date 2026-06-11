@@ -4,10 +4,12 @@ import DailyView from './pages/DailyView'
 import AppSidebar from './components/AppSidebar'
 import SettingsPanel from './components/SettingsPanel'
 import Dashboard, { BoardInfo } from './pages/Dashboard'
+import StudentLists, { StudentList } from './pages/StudentLists'
 import { api } from './api'
 import { PRESET_THEMES, applyGlobalFont, applyTheme } from './store/theme'
 
 const DEFAULT_CATEGORIES = ['수업', '학급 운영', '행사', '개인', '기타']
+type AppView = 'dashboard' | 'students'
 
 function shiftDate(date: Date, amount: number) {
   const next = new Date(date)
@@ -25,19 +27,18 @@ export default function App(): JSX.Element {
   const [diaryName, setDiaryName] = useState('PanDeckI')
   const [systemFonts, setSystemFonts] = useState<string[]>([])
   const [globalFont, setGlobalFont] = useState('')
-  const [mosaicIntensity, setMosaicIntensity] = useState(14)
-  const [blurIntensity, setBlurIntensity] = useState(12)
-  const [gridSpacing, setGridSpacing] = useState(40)
   const [boards, setBoards] = useState<BoardInfo[]>([])
   const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES)
   const [activeBoard, setActiveBoard] = useState<BoardInfo | null>(null)
   const [dashboardCategory, setDashboardCategory] = useState('전체')
   const [createRequest, setCreateRequest] = useState(0)
+  const [appView, setAppView] = useState<AppView>('dashboard')
+  const [studentLists, setStudentLists] = useState<StudentList[]>([])
 
   useEffect(() => {
     async function loadSettings() {
       const settings = await invoke<Record<string, string>>('get_settings_batch', {
-        keys: ['active_theme', 'globalFont', 'ghostMosaicIntensity', 'ghostBlurIntensity', 'gridSpacing', 'pandecki_boards', 'pandecki_categories', 'appZoom', 'fontScale', 'fontOffsetY', 'diaryName'],
+        keys: ['active_theme', 'globalFont', 'pandecki_boards', 'pandecki_categories', 'pandecki_student_lists', 'appZoom', 'fontScale', 'fontOffsetY', 'diaryName'],
       }).catch(() => ({} as Record<string, string>))
 
       const themeId = settings.active_theme ?? 'sky'
@@ -55,12 +56,6 @@ export default function App(): JSX.Element {
       setGlobalFont(font)
       applyGlobalFont(font)
 
-      const mosaic = Number(settings.ghostMosaicIntensity)
-      if (Number.isFinite(mosaic) && mosaic > 0) setMosaicIntensity(mosaic)
-
-      const blur = Number(settings.ghostBlurIntensity)
-      if (Number.isFinite(blur) && blur > 0) setBlurIntensity(blur)
-
       const zoom = Number(settings.appZoom)
       if (Number.isFinite(zoom) && zoom > 0) setAppZoom(zoom)
       const scale = Number(settings.fontScale)
@@ -68,9 +63,6 @@ export default function App(): JSX.Element {
       const offset = Number(settings.fontOffsetY)
       if (Number.isFinite(offset)) setFontOffsetY(offset)
       if (settings.diaryName) setDiaryName(settings.diaryName)
-
-      const spacing = Number(settings.gridSpacing)
-      if (Number.isFinite(spacing) && spacing > 0) setGridSpacing(spacing)
 
       if (settings.pandecki_categories) {
         try {
@@ -83,6 +75,13 @@ export default function App(): JSX.Element {
         try {
           const stored = JSON.parse(settings.pandecki_boards) as BoardInfo[]
           if (Array.isArray(stored)) setBoards(stored)
+        } catch {}
+      }
+
+      if (settings.pandecki_student_lists) {
+        try {
+          const storedLists = JSON.parse(settings.pandecki_student_lists) as StudentList[]
+          if (Array.isArray(storedLists)) setStudentLists(storedLists)
         } catch {}
       }
     }
@@ -118,12 +117,21 @@ export default function App(): JSX.Element {
     if (dashboardCategory === oldName) setDashboardCategory(newName)
   }
 
+  const moveCategory = (name: string, direction: -1 | 1) => {
+    const index = categories.indexOf(name)
+    const targetIndex = index + direction
+    if (index < 0 || targetIndex < 0 || targetIndex >= categories.length) return
+    const next = [...categories]
+    ;[next[index], next[targetIndex]] = [next[targetIndex], next[index]]
+    saveCategories(next)
+  }
+
   const deleteCategory = (name: string) => {
     if (categories.length <= 1) return
     const fallback = categories.find(item => item !== name) ?? DEFAULT_CATEGORIES[0]
     const boardCount = boards.filter(board => board.category === name).length
     const message = boardCount > 0
-      ? '"' + name + '" 카테고리를 삭제하고 판떼기 ' + boardCount + '개를 "' + fallback + '" 카테고리로 옮길까요?'
+      ? '"' + name + '" 카테고리를 삭제하고 판 ' + boardCount + '개를 "' + fallback + '" 카테고리로 옮길까요?'
       : '"' + name + '" 카테고리를 삭제할까요?'
     if (!window.confirm(message)) return
     saveCategories(categories.filter(item => item !== name))
@@ -142,7 +150,6 @@ export default function App(): JSX.Element {
       updatedAt: now,
     }
     saveBoards([board, ...boards])
-    setActiveBoard(board)
   }
 
   const openBoard = (board: BoardInfo) => {
@@ -152,12 +159,28 @@ export default function App(): JSX.Element {
   }
 
   const deleteBoard = (board: BoardInfo) => {
-    if (!window.confirm(`"${board.title}" 판떼기를 목록에서 삭제할까요?`)) return
+    if (!window.confirm(`"${board.title}" 판을 목록에서 삭제할까요?`)) return
     saveBoards(boards.filter(item => item.id !== board.id))
     api.entry.delete(`board_${board.id}`).catch(() => {})
   }
 
+  const saveStudentList = (list: StudentList) => {
+    const next = studentLists.some(item => item.id === list.id)
+      ? studentLists.map(item => item.id === list.id ? list : item)
+      : [...studentLists, list]
+    setStudentLists(next)
+    api.settings.set('pandecki_student_lists', JSON.stringify(next)).catch(() => {})
+  }
+
+  const deleteStudentList = (list: StudentList) => {
+    if (!window.confirm(`"${list.title}" 학생 목록을 삭제할까요?`)) return
+    const next = studentLists.filter(item => item.id !== list.id)
+    setStudentLists(next)
+    api.settings.set('pandecki_student_lists', JSON.stringify(next)).catch(() => {})
+  }
+
   const selectCategory = (category: string) => {
+    setAppView('dashboard')
     setDashboardCategory(category)
     setActiveBoard(null)
   }
@@ -169,10 +192,12 @@ export default function App(): JSX.Element {
 
   return (
     <div className="app-shell">
-      <AppSidebar dashboardActive={!activeBoard} settingsOpen={settingsOpen} onDashboard={() => selectCategory('전체')} onSettings={() => setSettingsOpen(value => !value)} />
+      <AppSidebar dashboardActive={appView === 'dashboard' && !activeBoard} studentsActive={appView === 'students'} settingsOpen={settingsOpen} onDashboard={() => selectCategory('전체')} onStudents={() => { setAppView('students'); setActiveBoard(null); setSettingsOpen(false) }} onSettings={() => setSettingsOpen(value => !value)} />
       <section className="app-content" style={{ transform: `scale(${appZoom})`, transformOrigin: 'top left', width: `${100 / appZoom}%`, height: `${100 / appZoom}%` }}>
-        {!activeBoard ? (
-          <Dashboard boards={boards} categories={categories} category={dashboardCategory} createRequest={createRequest} onCreateRequestHandled={() => setCreateRequest(0)} onSelectCategory={setDashboardCategory} onAddCategory={addCategory} onRenameCategory={renameCategory} onDeleteCategory={deleteCategory} onCreate={createBoard} onOpen={openBoard} onDelete={deleteBoard} />
+        {appView === 'students' ? (
+          <StudentLists lists={studentLists} onSave={saveStudentList} onDelete={deleteStudentList} />
+        ) : !activeBoard ? (
+          <Dashboard boards={boards} categories={categories} category={dashboardCategory} createRequest={createRequest} onCreateRequestHandled={() => setCreateRequest(0)} onSelectCategory={setDashboardCategory} onAddCategory={addCategory} onRenameCategory={renameCategory} onMoveCategory={moveCategory} onDeleteCategory={deleteCategory} onCreate={createBoard} onOpen={openBoard} onDelete={deleteBoard} />
         ) : (
           <main className="pandecki-daily-shell">
       <DailyView
@@ -184,15 +209,13 @@ export default function App(): JSX.Element {
         boardTitle={activeBoard.title}
         systemFonts={systemFonts}
         globalFont={globalFont}
-        mosaicIntensity={mosaicIntensity}
-        blurIntensity={blurIntensity}
         diaryName={diaryName}
-        gridSpacing={gridSpacing}
+        studentLists={studentLists}
       />
           </main>
         )}
       </section>
-      {settingsOpen && <SettingsPanel activeThemeId={activeThemeId} onThemeChange={id => { setActiveThemeId(id); saveSetting('active_theme', id) }} appZoom={appZoom} onZoomChange={setAppZoom} onZoomCommit={value => saveSetting('appZoom', String(value))} globalFont={globalFont} onGlobalFontChange={value => { setGlobalFont(value); applyGlobalFont(value); saveSetting('globalFont', value) }} systemFonts={systemFonts} fontScale={fontScale} onFontScaleChange={value => { setFontScale(value); saveSetting('fontScale', String(value)) }} fontOffsetY={fontOffsetY} onFontOffsetYChange={value => { setFontOffsetY(value); saveSetting('fontOffsetY', String(value)) }} mosaicIntensity={mosaicIntensity} onMosaicIntensityChange={value => { setMosaicIntensity(value); saveSetting('ghostMosaicIntensity', String(value)) }} blurIntensity={blurIntensity} onBlurIntensityChange={value => { setBlurIntensity(value); saveSetting('ghostBlurIntensity', String(value)) }} diaryName={diaryName} onDiaryNameChange={value => { setDiaryName(value); saveSetting('diaryName', value) }} gridSpacing={gridSpacing} onGridSpacingChange={value => { setGridSpacing(value); saveSetting('gridSpacing', String(value)) }} onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsPanel activeThemeId={activeThemeId} onThemeChange={id => { setActiveThemeId(id); saveSetting('active_theme', id) }} appZoom={appZoom} onZoomChange={setAppZoom} onZoomCommit={value => saveSetting('appZoom', String(value))} globalFont={globalFont} onGlobalFontChange={value => { setGlobalFont(value); applyGlobalFont(value); saveSetting('globalFont', value) }} systemFonts={systemFonts} fontScale={fontScale} onFontScaleChange={value => { setFontScale(value); saveSetting('fontScale', String(value)) }} fontOffsetY={fontOffsetY} onFontOffsetYChange={value => { setFontOffsetY(value); saveSetting('fontOffsetY', String(value)) }} diaryName={diaryName} onDiaryNameChange={value => { setDiaryName(value); saveSetting('diaryName', value) }} onClose={() => setSettingsOpen(false)} />}
     </div>
   )
 }

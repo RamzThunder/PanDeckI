@@ -100,7 +100,7 @@ export default function StickerPicker({ onSelect, onClose }: Props): JSX.Element
   const currentPack = packs[activePack]
 
   return (
-    <div className="absolute top-10 left-0 z-50 flex flex-col rounded-2xl shadow-2xl overflow-hidden"
+    <div className="absolute bottom-10 left-0 z-50 flex flex-col rounded-2xl shadow-2xl overflow-hidden"
       style={{ width: 320, maxHeight: 420, background: '#fff', border: '1px solid var(--color-border)' }}
       onClick={e => e.stopPropagation()}>
 

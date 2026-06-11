@@ -4,7 +4,8 @@ import { api } from '../api'
 import { toLocalDate } from '../store/diary'
 import StickerPicker from '../components/StickerPicker'
 import CropModal, { CustomShape } from '../components/CropModal'
-import TemplateModal from '../components/TemplateModal'
+import RandomStudentPicker from '../components/RandomStudentPicker'
+import type { StudentList } from './StudentLists'
 import ReactMarkdown from 'react-markdown'
 import { toPng } from 'html-to-image'
 
@@ -19,15 +20,13 @@ interface Props {
   boardTitle?: string
   systemFonts: string[]
   globalFont: string
-  mosaicIntensity: number
-  blurIntensity: number
   diaryName: string
-  gridSpacing: number
+  studentLists: StudentList[]
 }
 
 export interface CanvasEl {
   id: string
-  type: 'text' | 'sticker' | 'photo' | 'card' | 'video' | 'markdown'
+  type: 'text' | 'sticker' | 'photo' | 'video' | 'markdown'
   videoType?: 'embed' | 'local'
   x: number; y: number; w: number; h: number; z: number
   rotation: number
@@ -49,16 +48,10 @@ export interface CanvasEl {
   borderColor: string
   textRadius: number
   linkUrl?: string
-  cardType?: string
-  cardData?: Record<string, string>
-  templateId?: string
-  templateData?: Record<string, any>
   groupId?: string
   locked?: boolean
   flipH?: boolean
   flipV?: boolean
-  isGhost?: boolean
-  ghostMode?: 'exclude' | 'mosaic' | 'blur'
 }
 
 export interface DailyData {
@@ -80,123 +73,6 @@ type ActiveOp = DragOp | ResizeOp | RotateOp | MultiDragOp | MarqueeOp | MultiRe
 
 const DEFAULT_DATA: DailyData = { elements: [], bg: '#FFF8F0' }
 const fontDataUrlCache = new Map<string, string | null>()
-
-function getGhostMode(el: CanvasEl): 'exclude' | 'mosaic' | 'blur' | undefined {
-  return el.ghostMode ?? (el.isGhost ? 'exclude' : undefined)
-}
-
-function applyMosaicExport(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, elX: number, elY: number, elW: number, elH: number, dpr: number, pixelSize = 14) {
-  const px = Math.max(0, Math.floor(elX * dpr))
-  const py = Math.max(0, Math.floor(elY * dpr))
-  const pw = Math.min(Math.ceil(elW * dpr), canvas.width - px)
-  const ph = Math.min(Math.ceil(elH * dpr), canvas.height - py)
-  if (pw <= 0 || ph <= 0) return
-  const smallW = Math.max(1, Math.floor(pw / pixelSize))
-  const smallH = Math.max(1, Math.floor(ph / pixelSize))
-  const imgData = ctx.getImageData(px, py, pw, ph)
-  const tempC = document.createElement('canvas')
-  tempC.width = pw; tempC.height = ph
-  tempC.getContext('2d')!.putImageData(imgData, 0, 0)
-  const smallC = document.createElement('canvas')
-  smallC.width = smallW; smallC.height = smallH
-  const sctx = smallC.getContext('2d')!
-  sctx.drawImage(tempC, 0, 0, smallW, smallH)
-  ctx.save()
-  ctx.setTransform(1, 0, 0, 1, 0, 0)
-  ctx.imageSmoothingEnabled = false
-  ctx.drawImage(smallC, px, py, pw, ph)
-  ctx.restore()
-}
-// 수평 box blur (슬라이딩 윈도우, O(w*h))
-function boxBlurH(src: Uint8ClampedArray, dst: Uint8ClampedArray, w: number, h: number, r: number) {
-  const iarr = 1 / (r + r + 1)
-  for (let y = 0; y < h; y++) {
-    const base = y * w
-    let a0 = 0, a1 = 0, a2 = 0, a3 = 0
-    for (let j = -r; j <= r; j++) {
-      const xi = Math.max(0, Math.min(w - 1, j))
-      const i = (base + xi) * 4
-      a0 += src[i]; a1 += src[i+1]; a2 += src[i+2]; a3 += src[i+3]
-    }
-    for (let x = 0; x < w; x++) {
-      const idx = (base + x) * 4
-      dst[idx] = a0 * iarr; dst[idx+1] = a1 * iarr; dst[idx+2] = a2 * iarr; dst[idx+3] = a3 * iarr
-      const addIdx = (base + Math.min(w - 1, x + r + 1)) * 4
-      const remIdx = (base + Math.max(0, x - r)) * 4
-      a0 += src[addIdx] - src[remIdx]; a1 += src[addIdx+1] - src[remIdx+1]
-      a2 += src[addIdx+2] - src[remIdx+2]; a3 += src[addIdx+3] - src[remIdx+3]
-    }
-  }
-}
-// 수직 box blur
-function boxBlurV(src: Uint8ClampedArray, dst: Uint8ClampedArray, w: number, h: number, r: number) {
-  const iarr = 1 / (r + r + 1)
-  for (let x = 0; x < w; x++) {
-    let a0 = 0, a1 = 0, a2 = 0, a3 = 0
-    for (let j = -r; j <= r; j++) {
-      const yi = Math.max(0, Math.min(h - 1, j))
-      const i = (yi * w + x) * 4
-      a0 += src[i]; a1 += src[i+1]; a2 += src[i+2]; a3 += src[i+3]
-    }
-    for (let y = 0; y < h; y++) {
-      const idx = (y * w + x) * 4
-      dst[idx] = a0 * iarr; dst[idx+1] = a1 * iarr; dst[idx+2] = a2 * iarr; dst[idx+3] = a3 * iarr
-      const addIdx = (Math.min(h - 1, y + r + 1) * w + x) * 4
-      const remIdx = (Math.max(0, y - r) * w + x) * 4
-      a0 += src[addIdx] - src[remIdx]; a1 += src[addIdx+1] - src[remIdx+1]
-      a2 += src[addIdx+2] - src[remIdx+2]; a3 += src[addIdx+3] - src[remIdx+3]
-    }
-  }
-}
-// 3-pass box blur + 소프트 페더링. 캡처 영역을 r픽셀 확장 후 blur, cosine 마스크로 합성.
-function applyBlurExport(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, elX: number, elY: number, elW: number, elH: number, dpr: number, blurPx: number) {
-  const r = Math.max(1, Math.round(blurPx * dpr))
-  // 요소 물리 픽셀 경계
-  const ex = Math.floor(elX * dpr)
-  const ey = Math.floor(elY * dpr)
-  const ew = Math.ceil(elW * dpr)
-  const eh = Math.ceil(elH * dpr)
-  // r픽셀 확장 (페더링 번짐 공간)
-  const px = Math.max(0, ex - r)
-  const py = Math.max(0, ey - r)
-  const pw = Math.min(canvas.width - px, ew + 2 * r)
-  const ph = Math.min(canvas.height - py, eh + 2 * r)
-  if (pw <= 0 || ph <= 0) return
-
-  // 원본 픽셀 저장 (마스크 합성용)
-  const origData = ctx.getImageData(px, py, pw, ph)
-  const blurBuf = new Uint8ClampedArray(origData.data)
-  const tmp = new Uint8ClampedArray(blurBuf.length)
-  boxBlurH(blurBuf, tmp, pw, ph, r); boxBlurV(tmp, blurBuf, pw, ph, r)
-  boxBlurH(blurBuf, tmp, pw, ph, r); boxBlurV(tmp, blurBuf, pw, ph, r)
-  boxBlurH(blurBuf, tmp, pw, ph, r); boxBlurV(tmp, blurBuf, pw, ph, r)
-
-  // 소프트 마스크: 요소 내부=100% blur, 경계~외곽 r픽셀=cosine fade, 외부=0%
-  const orig = origData.data
-  for (let y = 0; y < ph; y++) {
-    for (let x = 0; x < pw; x++) {
-      const cx = px + x, cy = py + y
-      // 요소 경계까지의 부호 있는 거리 (양수=내부, 음수=외부)
-      const dx = Math.min(cx - ex, ex + ew - 1 - cx)
-      const dy = Math.min(cy - ey, ey + eh - 1 - cy)
-      const dist = Math.min(dx, dy)
-      const a = dist >= 0 ? 1 : dist <= -r ? 0 : 0.5 + 0.5 * Math.cos(Math.PI * (-dist) / r)
-      const i = (y * pw + x) * 4
-      orig[i]   = blurBuf[i]   * a + orig[i]   * (1 - a)
-      orig[i+1] = blurBuf[i+1] * a + orig[i+1] * (1 - a)
-      orig[i+2] = blurBuf[i+2] * a + orig[i+2] * (1 - a)
-      orig[i+3] = blurBuf[i+3] * a + orig[i+3] * (1 - a)
-    }
-  }
-
-  const tmpC = document.createElement('canvas')
-  tmpC.width = pw; tmpC.height = ph
-  tmpC.getContext('2d')!.putImageData(origData, 0, 0)
-  ctx.save()
-  ctx.setTransform(1, 0, 0, 1, 0, 0)
-  ctx.drawImage(tmpC, px, py)
-  ctx.restore()
-}
 
 const BG_COLORS = ['#FFF8F0','#FDE8F0','#E8F4E8','#E8F0FF','#FFF4E8','#F0F8FF','#FFFFFF','#F5F5F5']
 
@@ -261,7 +137,6 @@ function makeEl(type: CanvasEl['type'], x: number, y: number, content: string, m
   }
   if (type === 'sticker') return { ...base, w: 80, h: 80 }
   if (type === 'photo')   return { ...base, w: 180, h: 180 }
-  if (type === 'card')    return { ...base, w: 300, h: 220 }
   if (type === 'video')    return { ...base, w: 480, h: 270 }
   if (type === 'markdown') return { ...base, w: 280, h: 160, bgOpacity: 80 }
   return base
@@ -620,8 +495,6 @@ const VALIGN_OPTS: { id: CanvasEl['alignV']; label: string }[] = [
 
 const ICONS: Record<string, React.ReactNode> = {
   // 0. 상단 바
-  grid:       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18 M3 15h18 M9 3v18 M15 3v18"/></svg>,
-  magnet:     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 21h-4v-9c0-2.76-2.24-5-5-5s-5 2.24-5 5v9H3v-9c0-4.97 4.03-9 9-9s9 4.03 9 9v9z"/><path d="M3 16h4 M17 16h4"/></svg>,
   bgFill:     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 8L3 3 M3 3h4 M3 3v4 M16 16l5 5 M21 21h-4 M21 21v-4"/></svg>,
   bgOriginal: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="7" y="7" width="10" height="10" rx="1"/><path d="M3 7V3h4 M17 3h4v4 M3 17v4h4 M21 17v4h-4"/></svg>,
   undo:     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>,
@@ -666,7 +539,6 @@ const ICONS: Record<string, React.ReactNode> = {
   unlock: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="11" width="14" height="10" rx="2"/><path d="M9 11V6A3.5 3.5 0 002 6v2"/></svg>,
   flipH: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M7 5L2 12l5 7zM17 5l5 7-5 7z"/></svg>,
   flipV: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12h20M5 7l7-5 7 5zM5 17l7 5 7-5z"/></svg>,
-  ghost: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 10h.01M15 10h.01M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"/></svg>,
 }
 
 function InteractiveOverlay({ url, cmdHeld }: { url: string; cmdHeld: boolean }) {
@@ -682,7 +554,7 @@ function InteractiveOverlay({ url, cmdHeld }: { url: string; cmdHeld: boolean })
   )
 }
 
-export default function DailyView({ currentDate, onPrev, onNext, onToday, boardKey, boardTitle, systemFonts, globalFont, mosaicIntensity, blurIntensity, diaryName, gridSpacing }: Props): JSX.Element {
+export default function DailyView({ currentDate, onPrev, onNext, onToday, boardKey, boardTitle, systemFonts, globalFont, diaryName, studentLists }: Props): JSX.Element {
   const dateStr = boardKey ?? toLocalDate(currentDate)
   const [data, setData] = useState<DailyData>(DEFAULT_DATA)
   const [saved, setSaved] = useState(false)
@@ -692,7 +564,12 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showStickers, setShowStickers] = useState(false)
   const [showVideoMenu, setShowVideoMenu] = useState(false)
-  const [showGhostMenu, setShowGhostMenu] = useState(false)
+  const [showBackgroundMenu, setShowBackgroundMenu] = useState(false)
+  const [showRandomPicker, setShowRandomPicker] = useState(false)
+  const [randomPickerPosition, setRandomPickerPosition] = useState({ x: 120, y: 90 })
+  const [randomPickerSize, setRandomPickerSize] = useState({ width: 620, height: 650 })
+  const [dockVisible, setDockVisible] = useState(true)
+  const dockHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [showVideoUrlInput, setShowVideoUrlInput] = useState(false)
   const [videoUrlInput, setVideoUrlInput] = useState('')
   const mdTextareaRef = useRef<HTMLTextAreaElement | null>(null)
@@ -703,8 +580,6 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
   const [showFontSizeList, setShowFontSizeList] = useState(false)
   const [customShapes, setCustomShapes] = useState<CustomShape[]>([])
   const [tweetMsg, setTweetMsg] = useState<{text: string; type: 'info'|'error'} | null>(null)
-  const [showTemplate, setShowTemplate] = useState(false)
-  const [editingTemplateElId, setEditingTemplateElId] = useState<string | null>(null)
 
   // Background inputs
   const [bgHexInput, setBgHexInput] = useState(DEFAULT_DATA.bg)
@@ -715,11 +590,6 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
   const [borderColorInput, setBorderColorInput] = useState('#333333')
   const [bgColorInput, setBgColorInput] = useState('#ffffff')
 
-  const [showGrid, setShowGrid] = useState(false)
-  const [useSnap,  setUseSnap]  = useState(false)
-  const [ghostPreview, setGhostPreview] = useState(true)
-  const snapRef = useRef(false)
-  useEffect(() => { snapRef.current = useSnap }, [useSnap])
 
   const canvasRef        = useRef<HTMLDivElement>(null)
   const dataRef          = useRef(data)
@@ -729,13 +599,36 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
   const elClipboardRef   = useRef<CanvasEl[]>([])
   const persistRef    = useRef<(d: DailyData) => Promise<void>>(() => Promise.resolve())
   const exportRef     = useRef<() => Promise<void>>(() => Promise.resolve())
-  const [exportPreview, setExportPreview] = useState<{ dataUrl: string; filename: string; privacy: boolean } | null>(null)
-  const [capturePrivacy, setCapturePrivacy] = useState<boolean | null>(null)
+  const [exportPreview, setExportPreview] = useState<{ dataUrl: string; filename: string } | null>(null)
+  const [capturing, setCapturing] = useState<boolean | null>(null)
   const [youtubePort, setYoutubePort] = useState(0)
   const historyRef    = useRef<DailyData[]>([])
   const historyIdxRef = useRef(-1)
 
   const dateLabel = boardTitle ?? currentDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
+
+  const showDock = useCallback(() => {
+    if (dockHideTimerRef.current) clearTimeout(dockHideTimerRef.current)
+    setDockVisible(true)
+  }, [])
+
+  const scheduleDockHide = useCallback(() => {
+    if (dockHideTimerRef.current) clearTimeout(dockHideTimerRef.current)
+    dockHideTimerRef.current = setTimeout(() => {
+      if (!showStickers && !showVideoMenu && !showBackgroundMenu) setDockVisible(false)
+    }, 1400)
+  }, [showStickers, showVideoMenu, showBackgroundMenu])
+
+  useEffect(() => {
+    scheduleDockHide()
+    return () => {
+      if (dockHideTimerRef.current) clearTimeout(dockHideTimerRef.current)
+    }
+  }, [scheduleDockHide])
+
+  useEffect(() => {
+    if (showStickers || showVideoMenu || showBackgroundMenu) showDock()
+  }, [showStickers, showVideoMenu, showBackgroundMenu, showDock])
 
   useEffect(() => {
     api.video.getYoutubePort().then(setYoutubePort).catch(() => {})
@@ -897,7 +790,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
     setSelectedId(newEl.id)
   }
 
-  const buildExportDataUrl = useCallback(async (privacy: boolean): Promise<string> => {
+  const buildExportDataUrl = useCallback(async (): Promise<string> => {
     const canvasEl = canvasRef.current
     if (!canvasEl) return ''
     const W = canvasEl.clientWidth
@@ -937,9 +830,8 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
           ctx.restore()
         } catch {}
       }
-      for (const el of [...d.elements].filter(el => !privacy || getGhostMode(el) !== 'exclude').sort((a, b) => a.z - b.z)) {
+      for (const el of [...d.elements].sort((a, b) => a.z - b.z)) {
       if (el.type === 'video') continue
-      const gm = privacy ? getGhostMode(el) : undefined
       ctx.save()
       ctx.globalAlpha = el.opacity / 100
       ctx.translate(el.x + el.w / 2, el.y + el.h / 2)
@@ -1048,8 +940,6 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
         } catch {}
       }
       ctx.restore()
-      if (gm === 'mosaic') applyMosaicExport(ctx, offscreen, el.x, el.y, el.w, el.h, dpr, mosaicIntensity)
-      if (gm === 'blur')   applyBlurExport(ctx, offscreen, el.x, el.y, el.w, el.h, dpr, blurIntensity)
       }
       return offscreen.toDataURL('image/png')
     } finally {
@@ -1057,24 +947,24 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
         try { document.head.removeChild(localFontFaces) } catch {}
       }
     }
-  }, [customShapes, mosaicIntensity, blurIntensity])
+  }, [customShapes])
 
-  const buildCaptureDataUrl = useCallback(async (privacy: boolean): Promise<string> => {
+  const buildCaptureDataUrl = useCallback(async (): Promise<string> => {
     const canvasEl = canvasRef.current
     if (!canvasEl) return ''
-    setCapturePrivacy(privacy)
+    setCapturing(true)
     await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
     const rect = canvasEl.getBoundingClientRect()
     try {
       const b64 = await api.export.captureRegionB64({ x: rect.left, y: rect.top, w: rect.width, h: rect.height })
       return `data:image/png;base64,${b64}`
     } finally {
-      setCapturePrivacy(null)
+      setCapturing(null)
     }
   }, [])
 
   const exportToPNG = useCallback(async () => {
-    const dataUrl = await buildCaptureDataUrl(true).catch(() => buildExportDataUrl(true))
+    const dataUrl = await buildCaptureDataUrl().catch(() => buildExportDataUrl())
     if (!dataUrl) return
     const now = new Date()
     const yy  = String(now.getFullYear()).slice(2)
@@ -1082,9 +972,9 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
     const dd  = String(now.getDate()).padStart(2, '0')
     const hh  = String(now.getHours()).padStart(2, '0')
     const min = String(now.getMinutes()).padStart(2, '0')
-    const safeName = (diaryName || 'dida').replace(/\s+/g, '_')
+    const safeName = (diaryName || 'PanDeckI').replace(/\s+/g, '_')
     const filename = `${safeName}_${yy}${mm}${dd}_${hh}${min}.png`
-    setExportPreview({ dataUrl, filename, privacy: true })
+    setExportPreview({ dataUrl, filename })
   }, [buildCaptureDataUrl, buildExportDataUrl, diaryName])
   exportRef.current = exportToPNG
 
@@ -1350,7 +1240,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
           if (!elNode) continue
           const elData = dataRef.current.elements.find(x => x.id === id)
           if (!elData) continue
-          const sg = (v: number) => snapRef.current ? Math.round(v / 10) * 10 : v
+          const sg = (v: number) => v
           const rot = ((elData.rotation ?? 0) * Math.PI) / 180
           const W = elData.w, H = elData.h
           const bbW = Math.abs(W * Math.cos(rot)) + Math.abs(H * Math.sin(rot))
@@ -1385,7 +1275,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
       if (op.kind === 'drag') {
         if (!node || !canvas) return
         const dx = e.clientX - op.sx, dy = e.clientY - op.sy
-        const sg = (v: number) => snapRef.current ? Math.round(v / 10) * 10 : v
+        const sg = (v: number) => v
         const elRot = ((dataRef.current.elements.find(el => el.id === op.id)?.rotation ?? 0) * Math.PI) / 180
         const W = node.offsetWidth, H = node.offsetHeight
         const bbW = Math.abs(W * Math.cos(elRot)) + Math.abs(H * Math.sin(elRot))
@@ -1648,23 +1538,21 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
     : { background: data.bg }
 
   return (
-    <div className="flex flex-col h-full select-none" style={canvasBgStyle}
+    <div className="flex flex-col h-full select-none relative" style={canvasBgStyle}
+      onMouseMove={e => {
+        const rect = e.currentTarget.getBoundingClientRect()
+        if (rect.bottom - e.clientY <= 100) showDock()
+        else if (dockVisible && !showStickers && !showVideoMenu && !showBackgroundMenu) scheduleDockHide()
+      }}
       onClick={e => {
         if (e.metaKey || e.ctrlKey) return
         if (justMarqueedRef.current) { justMarqueedRef.current = false; return }
-        setSelectedId(null); setMultiIds([]); setEditingId(null); setShowStickers(false); setShowFontList(false); setShowFontSizeList(false); setShowVideoMenu(false); setShowGhostMenu(false)
+        setSelectedId(null); setMultiIds([]); setEditingId(null); setShowStickers(false); setShowFontList(false); setShowFontSizeList(false); setShowVideoMenu(false); setShowBackgroundMenu(false)
       }}>
 
-      {/* SVG defs — clip-path + ghost filters */}
+      {/* SVG defs — clip paths */}
       <svg width="0" height="0" style={{ position: 'absolute', pointerEvents: 'none' }}>
         <defs>
-          <filter id="pixelate-filter" x="0%" y="0%" width="100%" height="100%" colorInterpolationFilters="sRGB">
-            <feFlood x={Math.round(mosaicIntensity * 0.35)} y={Math.round(mosaicIntensity * 0.35)} height="2" width="2"/>
-            <feComposite width={mosaicIntensity} height={mosaicIntensity}/>
-            <feTile result="a"/>
-            <feComposite in="SourceGraphic" in2="a" operator="in"/>
-            <feMorphology operator="dilate" radius={Math.round(mosaicIntensity / 2)}/>
-          </filter>
           <clipPath id="clip-heart" clipPathUnits="objectBoundingBox">
             <path d="M0.5,0.3 C0.5,0.1 0.75,0.05 0.875,0.2 C1,0.35 1,0.6 0.875,0.75 L0.5,1 L0.125,0.75 C0,0.6 0,0.35 0.125,0.2 C0.25,0.05 0.5,0.1 0.5,0.3 Z" />
           </clipPath>
@@ -1674,27 +1562,32 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
         </defs>
       </svg>
 
-      {/* Top bar */}
-      <div className="flex items-center justify-between px-5 py-2 shrink-0"
-        style={{ borderBottom: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.75)' }}
+      {/* Auto-hiding bottom dock */}
+      <div className="flex items-center justify-center gap-1.5 px-3 py-2"
+        style={{
+          position: 'absolute', left: '50%', bottom: 14, zIndex: 200000,
+          maxWidth: 'calc(100% - 28px)', minHeight: 48, overflow: 'visible',
+          border: '1px solid color-mix(in srgb, var(--color-border) 80%, transparent)',
+          borderRadius: 15, background: 'rgba(255,255,255,0.92)',
+          boxShadow: '0 8px 28px rgba(30,40,55,0.18)',
+          backdropFilter: 'blur(14px)',
+          transform: `translate(-50%, ${dockVisible ? '0' : 'calc(100% + 24px)'})`,
+          opacity: dockVisible ? 1 : 0,
+          pointerEvents: dockVisible ? 'auto' : 'none',
+          transition: 'transform .24s ease, opacity .2s ease',
+        }}
+        onMouseEnter={showDock}
+        onMouseLeave={scheduleDockHide}
         onClick={e => e.stopPropagation()}>
-        {boardKey
-          ? <span className="w-20" />
-          : <button onClick={onPrev} className="text-sm px-3 py-1 rounded-full hover:opacity-70" style={{ color: 'var(--color-primary-dark)' }}>‹ 전 날</button>}
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>{dateLabel}</h2>
-          {!boardKey && <button onClick={onToday} className="text-xs px-2 py-0.5 rounded-full hover:opacity-70" style={{ color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary-dark)' }}>오늘</button>}
-          {saved && <span className="text-xs" style={{ color: 'var(--color-primary-dark)' }}>저장됨 ✓</span>}
-        </div>
-        {boardKey
-          ? <span className="text-xs px-3" style={{ color: 'var(--color-text-muted)' }}>PanDeckI</span>
-          : <button onClick={onNext} className="text-sm px-3 py-1 rounded-full hover:opacity-70" style={{ color: 'var(--color-primary-dark)' }}>다음 날 ›</button>}
-      </div>
 
-      {/* Toolbar */}
-      <div className="flex items-center gap-1.5 px-3 shrink-0"
-        style={{ borderBottom: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.88)', height: 44 }}
-        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {!boardKey && <button onClick={onPrev} className="text-sm px-1.5 hover:opacity-70" style={{ color: 'var(--color-primary-dark)' }}>‹</button>}
+          <strong className="text-xs whitespace-nowrap" style={{ color: 'var(--color-text-muted)', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>{dateLabel}</strong>
+          {!boardKey && <button onClick={onToday} className="text-xs px-1.5 rounded-full hover:opacity-70" style={{ color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary-dark)' }}>오늘</button>}
+          {!boardKey && <button onClick={onNext} className="text-sm px-1.5 hover:opacity-70" style={{ color: 'var(--color-primary-dark)' }}>›</button>}
+          {saved && <span className="text-xs whitespace-nowrap" style={{ color: 'var(--color-primary-dark)' }}>저장됨 ✓</span>}
+        </div>
+        <div className="w-px self-stretch mx-0.5" style={{ background: 'var(--color-border)' }} />
 
         {/* Undo / Redo */}
         <button onClick={undo} title="실행취소 (⌘Z)"
@@ -1711,7 +1604,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
         <button onClick={addText} className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
           style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>텍스트</button>
         <div className="relative">
-          <button onClick={() => setShowStickers(v => !v)} className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
+          <button onClick={() => { setShowStickers(v => !v); setShowVideoMenu(false); setShowBackgroundMenu(false) }} className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
             style={{ background: showStickers ? 'var(--color-primary)' : 'var(--color-primary-light)', color: showStickers ? '#fff' : 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>
             스티커
           </button>
@@ -1720,13 +1613,13 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
         <button onClick={addPhoto} className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
           style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>사진</button>
         <div className="relative">
-          <button onClick={() => { setShowVideoMenu(v => !v); setShowVideoUrlInput(false); setVideoUrlInput('') }}
+          <button onClick={() => { setShowVideoMenu(v => !v); setShowStickers(false); setShowBackgroundMenu(false); setShowVideoUrlInput(false); setVideoUrlInput('') }}
             className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
             style={{ background: showVideoMenu ? 'var(--color-primary)' : 'var(--color-primary-light)', color: showVideoMenu ? '#fff' : 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>
             동영상
           </button>
           {showVideoMenu && (
-            <div className="absolute top-full left-0 mt-1 z-50 rounded-xl shadow-xl overflow-hidden"
+            <div className="absolute bottom-full left-0 mb-2 z-50 rounded-xl shadow-xl overflow-hidden"
               style={{ background: '#fff', border: '1px solid var(--color-border)', width: 'max-content', minWidth: 'max-content' }}
               onClick={e => e.stopPropagation()}>
               {!showVideoUrlInput ? (<>
@@ -1763,13 +1656,30 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
             </div>
           )}
         </div>
-        <button onClick={() => setShowTemplate(true)} className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
-          style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>스크랩</button>
+        <div className="w-px self-stretch mx-0.5" style={{ background: 'var(--color-border)' }} />
+        <button onClick={() => { setShowRandomPicker(true); setShowStickers(false); setShowVideoMenu(false); setShowBackgroundMenu(false) }}
+          className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
+          style={{ background: 'var(--color-primary)', color: '#fff', border: '1px solid var(--color-primary)' }}>
+          발표 뽑기
+        </button>
         <div className="w-px self-stretch mx-0.5" style={{ background: 'var(--color-border)' }} />
 
         {/* Canvas background */}
-        <div className="flex items-center gap-1.5 flex-wrap h-7">
-          <span className="text-xs shrink-0" style={{ color: 'var(--color-text-muted)' }}>배경</span>
+        <div className="relative">
+          <button onClick={() => { setShowBackgroundMenu(value => !value); setShowStickers(false); setShowVideoMenu(false) }}
+            className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
+            style={{ background: showBackgroundMenu ? 'var(--color-primary)' : 'var(--color-primary-light)', color: showBackgroundMenu ? '#fff' : 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>
+            배경
+          </button>
+          {showBackgroundMenu && (
+            <div className="absolute bottom-full right-0 mb-2 z-50 rounded-2xl shadow-2xl"
+              style={{ width: 410, padding: 13, background: 'rgba(255,255,255,0.97)', border: '1px solid var(--color-border)' }}
+              onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-3">
+                <strong className="text-xs" style={{ color: 'var(--color-text)' }}>판 배경</strong>
+                <button onClick={() => setShowBackgroundMenu(false)} style={{ border: 0, background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: 16 }}>×</button>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
 
           {BG_COLORS.map(c => (
             <button key={c} onClick={() => { update({ bg: c }); setBgHexInput(c) }} className="w-5 h-5 rounded-full shrink-0 transition-transform"
@@ -1850,39 +1760,15 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
               </div>
             </div>
           )}
+              </div>
+            </div>
+          )}
         </div>
-        <div className="w-px self-stretch mx-0.5" style={{ background: 'var(--color-border)' }} />
-
-        {/* Grid / Snap */}
-        <button onClick={() => setShowGrid(v => !v)} title="그리드"
-          style={{ width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: `1px solid ${showGrid ? 'var(--color-primary)' : 'var(--color-border)'}`, background: showGrid ? 'var(--color-primary-light)' : 'transparent', color: showGrid ? 'var(--color-primary-dark)' : 'var(--color-text-muted)', cursor: 'pointer' }}>
-          <span style={{ display: 'flex', transform: 'scale(0.78)', transformOrigin: 'center' }}>{ICONS.grid}</span>
-        </button>
-        <button onClick={() => setUseSnap(v => !v)} title="자석 스냅"
-          style={{ width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: `1px solid ${useSnap ? 'var(--color-primary)' : 'var(--color-border)'}`, background: useSnap ? 'var(--color-primary-light)' : 'transparent', color: useSnap ? 'var(--color-primary-dark)' : 'var(--color-text-muted)', cursor: 'pointer' }}>
-          <span style={{ display: 'flex', transform: 'scale(0.78)', transformOrigin: 'center' }}>{ICONS.magnet}</span>
-        </button>
-        <button onClick={() => setGhostPreview(v => !v)} title={ghostPreview ? '유령 미리보기 끄기' : '유령 미리보기 켜기'}
-          style={{ width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: `1px solid ${ghostPreview ? 'var(--color-primary)' : 'var(--color-border)'}`, background: ghostPreview ? 'var(--color-primary-light)' : 'transparent', color: ghostPreview ? 'var(--color-primary-dark)' : 'var(--color-text-muted)', cursor: 'pointer' }}>
-          {ghostPreview
-            ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"/><path d="M9 10h.01M15 10h.01" strokeWidth="3"/><path d="M9.5 13 Q12 16 14.5 13"/></svg>
-            : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"/><path d="M9 9l6 2m0-2l-6 2"/><path d="M10.5 14h3"/></svg>
-          }
-        </button>
       </div>
 
       {/* Canvas */}
       <div ref={canvasRef} className="flex-1 relative overflow-hidden" style={canvasBgStyle}
         onPointerDown={startMarquee}>
-
-        {/* Grid overlay — zIndex: 1 keeps it above canvas bg but below all UI (toolbars, popups) */}
-        {showGrid && capturePrivacy === null && (
-          <div style={{
-            position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 1,
-            backgroundImage: 'linear-gradient(to right, rgba(100,100,200,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(100,100,200,0.12) 1px, transparent 1px)',
-            backgroundSize: `${gridSpacing}px ${gridSpacing}px`,
-          }} />
-        )}
 
         {/* Background image layer */}
         {data.bgImage && (() => {
@@ -1905,18 +1791,15 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
           )
         })()}
 
-        {[...data.elements].filter(el => !(capturePrivacy === true && getGhostMode(el) === 'exclude')).sort((a, b) => a.z - b.z).map(el => {
+        {[...data.elements].sort((a, b) => a.z - b.z).map(el => {
           const isSel  = el.id === selectedId
           const isEdit = el.id === editingId
           const clipStyle = el.type === 'photo' ? getPhotoClipStyle(el.clipShape, customShapes) : {}
           const justifyV = el.alignV === 'top' ? 'flex-start' : el.alignV === 'middle' ? 'center' : 'flex-end'
           const textRad = el.textRadius ?? 0
           const bw = el.borderWidth ?? 0
-          const gm = getGhostMode(el)
-          const privacyPreview = capturePrivacy ?? ghostPreview
           const interactiveUrl: string | null =
             el.type === 'video' && el.videoType === 'embed' ? el.content :
-            el.type === 'card' && el.cardType === 'tweet' ? (el.cardData?.url ?? null) :
             (el.linkUrl ?? null)
 
           return (
@@ -1924,7 +1807,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
               style={{
                 position: 'absolute', left: el.x, top: el.y, width: el.w, height: el.h, zIndex: el.z,
                 transform: `rotate(${el.rotation}deg) scaleX(${el.flipH ? -1 : 1}) scaleY(${el.flipV ? -1 : 1})`,
-                outline: capturePrivacy === null && (isSel || multiIds.includes(el.id)) ? '2px solid var(--color-primary-dark)' : '2px solid transparent',
+                outline: capturing === null && (isSel || multiIds.includes(el.id)) ? '2px solid var(--color-primary-dark)' : '2px solid transparent',
                 outlineOffset: 2,
                 cursor: isEdit ? 'default' : el.locked ? 'default' : 'move',
               }}
@@ -1939,10 +1822,6 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
                   }
                 }
                 if (el.type === 'markdown') { setSelectedId(el.id); setEditingId(el.id) }
-                if (el.type === 'photo' && el.templateId) {
-                  setEditingTemplateElId(el.id)
-                  setShowTemplate(true)
-                }
               }}
               onClick={e => e.stopPropagation()}>
 
@@ -1954,7 +1833,6 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
                 borderRadius: el.type === 'photo'
                   ? (el.clipShape === 'none' ? `${photoRadiusPx(el.w, el.h, el.photoRadius)}px` : 0)
                   : (el.type === 'text' || el.type === 'markdown') ? `${textRad}px` : 0,
-                filter: privacyPreview && gm === 'blur' ? `blur(${blurIntensity}px)` : privacyPreview && gm === 'mosaic' ? "url('#pixelate-filter')" : undefined,
               }}>
                 {el.type === 'text' && (
                   isEdit ? (
@@ -2076,14 +1954,10 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
                     style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 )}
 
-                {el.type === 'card' && el.cardType === 'tweet' && (
-                  <TweetCard data={el.cardData ?? {}} w={el.w} h={el.h} />
-                )}
-
                 {interactiveUrl && el.type !== 'video' && <InteractiveOverlay url={interactiveUrl} cmdHeld={cmdHeld} />}
               </div>
 
-              {capturePrivacy === null && isSel && !isEdit && (<>
+              {capturing === null && isSel && !isEdit && (<>
                 <div onPointerDown={e => startRotate(e, el.id)} onClick={e => e.stopPropagation()}
                   style={{ position: 'absolute', top: -28, left: '50%', transform: 'translateX(-50%)', width: 20, height: 20, borderRadius: '50%', zIndex: 99, cursor: 'grab', background: 'var(--color-primary-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: '#fff' }}>↻</div>
                 <div onPointerDown={e => startResize(e, el.id)} onClick={e => e.stopPropagation()}
@@ -2093,24 +1967,8 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
           )
         })}
 
-        {/* Ghost mode outlines — rendered above all elements */}
-        {capturePrivacy === null && ghostPreview && [...data.elements].map(el => {
-          const gm = getGhostMode(el)
-          if (!gm || el.id === selectedId || multiIds.includes(el.id)) return null
-          return (
-            <div key={`gm-outline-${el.id}`} style={{
-              position: 'absolute', left: el.x, top: el.y, width: el.w, height: el.h,
-              transform: `rotate(${el.rotation}deg) scaleX(${el.flipH ? -1 : 1}) scaleY(${el.flipV ? -1 : 1})`,
-              outline: '1.5px dashed rgba(130,80,200,0.5)',
-              outlineOffset: 2,
-              pointerEvents: 'none',
-              zIndex: 99990,
-            }} />
-          )
-        })}
-
         {/* Marquee selection overlay */}
-        {capturePrivacy === null && marqueeRect && (
+        {capturing === null && marqueeRect && (
           <div style={{
             position: 'absolute',
             left: marqueeRect.x, top: marqueeRect.y,
@@ -2158,7 +2016,6 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
 
           const allGrouped = selEls.length > 1 && selEls.every(el => el.groupId && el.groupId === selEls[0].groupId)
           const allLocked  = selEls.every(el => !!el.locked)
-          const multiGhostMode = (selEls.every(el => getGhostMode(el) === 'exclude') ? 'exclude' : selEls.every(el => getGhostMode(el) === 'mosaic') ? 'mosaic' : selEls.every(el => getGhostMode(el) === 'blur') ? 'blur' : undefined)
           const handleMultiLayer = (action: 'front' | 'forward' | 'backward' | 'back') => {
             const sorted = [...dataRef.current.elements].sort((a, b) => a.z - b.z)
             const ids = new Set(multiIds)
@@ -2227,35 +2084,6 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
               {mBtn(ICONS.sendBack,     '맨뒤로',   () => handleMultiLayer('back'))}
               {sep}
               {mBtn(allGrouped ? ICONS.ungroup : ICONS.group, allGrouped ? '그룹 해제 (⌘G)' : '그룹화 (⌘G)', handleGroup, allGrouped)}
-              {sep}
-              {(() => {
-                const GHOST_COLOR = '#9c59d1'
-                const activeColor = multiGhostMode ? GHOST_COLOR : undefined
-                return (
-                  <div style={{ position: 'relative', flexShrink: 0 }}>
-                    <button title="유령 모드 (우클릭: 해제)" onClick={e => { e.stopPropagation(); setShowGhostMenu(v => !v) }}
-                      onContextMenu={e => { e.preventDefault(); e.stopPropagation(); const next = { ...dataRef.current, elements: dataRef.current.elements.map(el => multiIds.includes(el.id) ? { ...el, ghostMode: undefined, isGhost: undefined } : el) }; setData(next); persistRef.current(next); setShowGhostMenu(false) }}
-                      style={{ width: 28, height: 28, borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, border: `1px solid ${activeColor ?? 'var(--color-border)'}`, background: activeColor ?? 'transparent', color: activeColor ? '#fff' : 'var(--color-text-muted)' }}>
-                      {ICONS.ghost}
-                    </button>
-                    {showGhostMenu && (
-                      <div style={{ position: 'absolute', bottom: '110%', left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: 'var(--color-bg)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '4px', display: 'flex', flexDirection: 'column', gap: 2, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', minWidth: 88 }}>
-                        {([
-                          { key: 'exclude' as const, label: '제외' },
-                          { key: 'mosaic'  as const, label: '모자이크' },
-                          { key: 'blur'    as const, label: '블러' },
-                        ]).map(m => (
-                          <button key={m.key} onClick={e => { e.stopPropagation(); const next = { ...dataRef.current, elements: dataRef.current.elements.map(el => multiIds.includes(el.id) ? { ...el, ghostMode: multiGhostMode === m.key ? undefined : m.key, isGhost: undefined } : el) }; setData(next); persistRef.current(next); setShowGhostMenu(false) }}
-                            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 8px', borderRadius: 5, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: multiGhostMode === m.key ? 700 : 400, background: multiGhostMode === m.key ? GHOST_COLOR : 'transparent', color: multiGhostMode === m.key ? '#fff' : 'var(--color-text)', textAlign: 'left' }}>
-                            <span style={{ opacity: multiGhostMode === m.key ? 1 : 0.4, display: 'flex' }}>{ICONS.ghost}</span>
-                            {m.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )
-              })()}
               {mBtn(allLocked ? ICONS.unlock : ICONS.lock, allLocked ? '잠금 해제' : '잠금', () => {
                 const next = { ...dataRef.current, elements: dataRef.current.elements.map(el => multiIds.includes(el.id) ? { ...el, locked: !allLocked } : el) }
                 setData(next); persistRef.current(next)
@@ -2539,31 +2367,6 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
                 {rowBtn(ICONS.bringForward, '앞으로', () => updateEl(selectedEl.id, { z: selectedEl.z + 1 }))}
                 {rowBtn(ICONS.sendBackward, '뒤로', () => updateEl(selectedEl.id, { z: Math.max(1, selectedEl.z - 1) }))}
                 {rowBtn(ICONS.sendBack, '맨뒤로', () => updateEl(selectedEl.id, { z: 1 }))}
-                {vSep}
-                {(() => {
-                  const curGm = getGhostMode(selectedEl)
-                  const GHOST_COLOR = '#9c59d1'
-                  return (
-                    <div style={{ position: 'relative', flexShrink: 0 }}>
-                      <button title="유령 모드 (우클릭: 해제)" onClick={e => { e.stopPropagation(); setShowGhostMenu(v => !v) }}
-                        onContextMenu={e => { e.preventDefault(); e.stopPropagation(); updateEl(selectedEl.id, { ghostMode: undefined, isGhost: undefined }); setShowGhostMenu(false) }}
-                        style={{ ...S, border: `1px solid ${curGm ? GHOST_COLOR : 'var(--color-border)'}`, background: curGm ? GHOST_COLOR : 'transparent', color: curGm ? '#fff' : 'var(--color-text-muted)' }}>
-                        {ICONS.ghost}
-                      </button>
-                      {showGhostMenu && (
-                        <div style={{ position: 'absolute', bottom: '110%', left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: 'var(--color-bg)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '4px', display: 'flex', flexDirection: 'column', gap: 2, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', minWidth: 88 }}>
-                          {(['exclude', 'mosaic', 'blur'] as const).map(key => (
-                            <button key={key} onClick={e => { e.stopPropagation(); updateEl(selectedEl.id, { ghostMode: curGm === key ? undefined : key, isGhost: undefined }); setShowGhostMenu(false) }}
-                              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 8px', borderRadius: 5, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: curGm === key ? 700 : 400, background: curGm === key ? GHOST_COLOR : 'transparent', color: curGm === key ? '#fff' : 'var(--color-text)', textAlign: 'left' }}>
-                              <span style={{ opacity: curGm === key ? 1 : 0.4, display: 'flex' }}>{ICONS.ghost}</span>
-                              {key === 'exclude' ? '제외' : key === 'mosaic' ? '모자이크' : '블러'}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })()}
                 {rowBtn(selectedEl.locked ? ICONS.unlock : ICONS.lock, selectedEl.locked ? '잠금 해제' : '잠금', () => updateEl(selectedEl.id, { locked: !selectedEl.locked }), !!selectedEl.locked)}
                 {vSep}
                 <button onClick={deleteSelected} title="삭제"
@@ -2573,48 +2376,6 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
           )
         })()}
       </div>
-
-      {/* Template modal */}
-      {showTemplate && (() => {
-        const editEl = editingTemplateElId ? dataRef.current.elements.find(e => e.id === editingTemplateElId) : null
-        const editMode = editEl?.templateId
-          ? { templateId: editEl.templateId as any, data: editEl.templateData as any }
-          : undefined
-        return (
-          <TemplateModal
-            globalFont={globalFont}
-            systemFonts={systemFonts}
-            editMode={editMode}
-            onConfirm={(dataUrl, w, h, linkUrl, tplId, tplData) => {
-              if (editingTemplateElId) {
-                const next = {
-                  ...dataRef.current,
-                  elements: dataRef.current.elements.map(e =>
-                    e.id === editingTemplateElId
-                      ? { ...e, content: dataUrl, w, h, linkUrl: linkUrl ?? e.linkUrl, templateData: tplData }
-                      : e
-                  )
-                }
-                setData(next); persistRef.current(next); setSelectedId(editingTemplateElId)
-              } else {
-                const c = canvasRef.current
-                const cx = c ? Math.max(0, c.clientWidth / 2 - w / 2) : 60
-                const cy = c ? Math.max(0, c.clientHeight / 2 - h / 2) : 60
-                const mz = dataRef.current.elements.reduce((m, e) => Math.max(m, e.z), 0)
-                const el = {
-                  ...makeEl('photo', cx, cy, dataUrl, mz), w, h,
-                  ...(linkUrl ? { linkUrl } : {}),
-                  ...(tplId ? { templateId: tplId, templateData: tplData } : {}),
-                }
-                const next = { ...dataRef.current, elements: [...dataRef.current.elements, el] }
-                setData(next); persistRef.current(next); setSelectedId(el.id)
-              }
-              setShowTemplate(false); setEditingTemplateElId(null)
-            }}
-            onCancel={() => { setShowTemplate(false); setEditingTemplateElId(null) }}
-          />
-        )
-      })()}
 
       {/* Crop modal */}
       {cropTarget && (() => {
@@ -2643,8 +2404,19 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
         )
       })()}
 
+      <RandomStudentPicker
+        key={dateStr}
+        lists={studentLists}
+        position={randomPickerPosition}
+        onPositionChange={setRandomPickerPosition}
+        size={randomPickerSize}
+        onSizeChange={setRandomPickerSize}
+        visible={showRandomPicker}
+        onClose={() => setShowRandomPicker(false)}
+      />
+
       {exportPreview && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 999999, background: 'rgba(0,0,0,0.7)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, visibility: capturePrivacy === null ? 'visible' : 'hidden', pointerEvents: capturePrivacy === null ? 'auto' : 'none' }}
+        <div style={{ position: 'fixed', inset: 0, zIndex: 999999, background: 'rgba(0,0,0,0.7)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, visibility: capturing === null ? 'visible' : 'hidden', pointerEvents: capturing === null ? 'auto' : 'none' }}
           onClick={() => setExportPreview(null)}>
           <div style={{ background: 'var(--color-bg)', borderRadius: 16, padding: 20, display: 'flex', flexDirection: 'column', gap: 14, maxWidth: '90%', maxHeight: '90%', boxShadow: '0 8px 40px rgba(0,0,0,0.4)' }}
             onClick={e => e.stopPropagation()}>
@@ -2661,16 +2433,6 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
                 <span style={{ fontSize: 11, color: 'var(--color-text-muted)', flexShrink: 0 }}>파일명</span>
                 <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exportPreview.filename}</span>
               </div>
-              <button
-                onClick={async () => {
-                  const nextPrivacy = !exportPreview.privacy
-                  const dataUrl = await buildCaptureDataUrl(nextPrivacy).catch(() => buildExportDataUrl(nextPrivacy))
-                  if (dataUrl) setExportPreview(prev => prev ? { ...prev, dataUrl, privacy: nextPrivacy } : null)
-                }}
-                title={exportPreview.privacy ? '프라이버시 필터 켜짐 (클릭하여 끄기)' : '프라이버시 필터 꺼짐 (클릭하여 켜기)'}
-                style={{ flexShrink: 0, padding: '6px 12px', borderRadius: 8, border: `1px solid ${exportPreview.privacy ? 'var(--color-primary)' : 'var(--color-border)'}`, background: exportPreview.privacy ? 'var(--color-primary)' : 'transparent', color: exportPreview.privacy ? '#fff' : 'var(--color-text-muted)', fontSize: 12, cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
-                {exportPreview.privacy ? '필터 켜짐' : '필터 꺼짐'}
-              </button>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setExportPreview(null)}

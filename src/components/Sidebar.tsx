@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { ViewMode } from '../store/diary'
 
 const startDrag = () => invoke('window_start_dragging')
-const BGM_STORAGE_KEY = 'dida-sidebar-bgm'
+const BGM_STORAGE_KEY = 'pandecki-sidebar-bgm'
 
 type BgmTrack = {
   id: string

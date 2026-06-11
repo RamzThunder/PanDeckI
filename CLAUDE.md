@@ -1,4 +1,4 @@
-# dida — 프로젝트 컨텍스트
+# PanDeckI — 프로젝트 컨텍스트
 
 ## Claude 행동 규칙
 - **푸쉬 전 CLAUDE.md 동기화**: `git push` 요청이 오면, 이번 작업에서 변경된 내용(새 기능, 타입 변경, 커맨드 추가, 설정 키 추가 등)이 있을 경우 CLAUDE.md를 먼저 업데이트한 뒤 푸쉬한다.
@@ -10,7 +10,7 @@
 
 ## 앱 개요
 개인 디지털 다이어리 데스크톱 앱. 자유 캔버스 꾸미기 스타일.
-**앱 이름**: dida (구 On Diary) — `productName`, `package.json name`, 창 타이틀, **Rust 실행 파일명** 모두 "dida"로 변경됨.
+**앱 이름**: PanDeckI
 
 ## 기술 스택
 - **프레임워크**: Tauri 2 (Rust 백엔드 + WKWebView 프론트엔드)
@@ -25,7 +25,7 @@
 - **올바른 실행 명령** (프로젝트 위치: `~/Documents/on-diary`):
   ```bash
   export PATH="/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
-  export CARGO_TARGET_DIR="$HOME/cargo_targets/dida"
+  export CARGO_TARGET_DIR="$HOME/cargo_targets/pandecki"
   npm run tauri dev
   ```
 - 프로젝트 스킬 있음: `.claude/skills/run-app/SKILL.md` 참고
@@ -43,11 +43,9 @@ src/
     MonthlyView.tsx        # 월간 캘린더 + 목표/버킷리스트
   components/
     Sidebar.tsx            # 좌측 사이드바 (월간/일간 탭, 설정 버튼)
-    SettingsPanel.tsx      # 우측 설정 패널 (정보/화면/세부설정 탭) — 커스텀 테마 삭제 기능 포함
     ThemePanel.tsx         # 테마 편집 패널 (SettingsPanel 내부에서 사용)
     StickerPicker.tsx      # PNG 스티커팩 피커 (폴더 기반)
     CropModal.tsx          # 사진 크롭 모달 (고정 프레임/자유형, PNG 마스크 모양)
-    TemplateModal.tsx      # 스크랩/카드 템플릿 에디터 (~2800줄)
     MarkdownTestBox.tsx    # 마크다운 렌더 테스트 박스
 src-tauri/
   src/
@@ -61,7 +59,7 @@ src-tauri/
 ```typescript
 export interface CanvasEl {
   id: string
-  type: 'text' | 'sticker' | 'photo' | 'card' | 'video' | 'markdown'
+  type: 'text' | 'sticker' | 'photo' | 'video' | 'markdown'
   x: number; y: number; w: number; h: number; z: number
   rotation: number       // 회전 각도 (deg)
   opacity: number        // 0-100
@@ -87,12 +85,6 @@ export interface CanvasEl {
   // 비디오 전용
   videoType?: 'embed' | 'local'   // embed: YouTube/Vimeo, local: 로컬 파일
 
-  // 카드/스크랩 전용
-  cardType?: string
-  cardData?: Record<string, string>
-  templateId?: string
-  templateData?: Record<string, any>
-
   // 링크
   linkUrl?: string        // 더블클릭 시 열리는 URL
 
@@ -102,9 +94,6 @@ export interface CanvasEl {
   flipH?: boolean         // 좌우 뒤집기
   flipV?: boolean         // 상하 뒤집기
 
-  // 유령 모드
-  isGhost?: boolean       // (레거시) ghostMode로 대체
-  ghostMode?: 'exclude' | 'mosaic' | 'blur'
 }
 
 export interface DailyData {
@@ -144,17 +133,13 @@ export interface DailyData {
 - **배경**: 프리셋 8색 + 커스텀 3슬롯(우클릭 삭제) + hex 입력 + 배경 이미지(크기/회전/fit)
 - **불투명도**: 요소 전체 투명도 슬라이더
 - **뒤집기**: 좌우/상하 반전
-- **유령 모드**: exclude(숨김)/mosaic(모자이크)/blur(블러) — PNG 내보내기 시 적용
-- **프라이버시 보호 토글**: 내보내기 미리보기 모달 내 👻 버튼. ON=유령모드 적용, OFF=모든 요소 원본 내보내기 (사이드바 버튼 제거됨)
-- **유령 모드 blur 내보내기**: WKWebView에서 `ctx.filter` 미작동 → 3-pass box blur (JS 픽셀 처리) + 코사인 소프트 마스크 페더링으로 구현 (`applyBlurExport`, `boxBlurH`, `boxBlurV` in DailyView.tsx)
 - **비디오**: YouTube/Vimeo embed(`videoType: 'embed'`) + 로컬 파일(`videoType: 'local'`). YouTube URL 인식: watch?v=, shorts/, live/, youtu.be/. embed URL: `youtube.com/embed/` 사용 (nocookie 아님)
-- **동영상 툴바**: photo=600px, 그 외(video/card/sticker 등)=410px, text=460px
-- **카드/스크랩**: TemplateModal로 편집하는 구조화된 카드 요소. 세부설정에서 카드별 기본값 설정 가능
+- **동영상 툴바**: photo=600px, 그 외(video/sticker 등)=410px, text=460px
 - **야구 티켓 팀 선택**: KBO 12구단 + 울산 웨일즈/상무 피닉스. 팀별 `color`(메인)·`color2`(그라데이션) 2색 적용. 헤더 배경: 135° 대각선 그라데이션, color1 35% 고정 후 color2로 전환. `homeTeam` 필드 → KBO_TEAMS 맵
-- **스크랩 날씨 지역 지오코딩**: 기초 케어 카드의 날씨 지역을 Open-Meteo geocoding API로 검색 → 저장 형식 `{name, lat, lng, country, admin1}` JSON. 구버전 문자열 키 폴백 지원
 - **문장 수집 카드 줄바꿈**: 인용구 박스는 `\n` 자동 인식(최대 20줄, 카드 높이 자동 확장). 원고지는 `manuscriptNewline` 토글(OFF=순차 흐름, ON=\n마다 새 행 시작)
 - **회전 스냅**: Shift 누른 채 핸들 회전 시 15° 단위로 스냅
 - **클립보드 붙여넣기**: Cmd+V로 이미지→사진요소, 텍스트→텍스트요소
+- **학생 목록/발표 뽑기**: 줄별 학생 목록을 저장하고 판 하단 도크에서 크기 조절 가능한 발표 위젯을 실행. 뽑힌 학생 자동 제외/개별 복원, 당일 결석 학생 제외, 추첨 초기화 가능
 - **테마**: 4 프리셋(하늘색·딸기핑크·흑백·다크, 기본=하늘색) + 5 커스텀 슬롯(삭제 가능), CSS 변수 기반 (`--color-primary` 등)
 - **앱 줌**: Cmd+스크롤 또는 설정 슬라이더 (50~150%), settings DB에 영속
 - **PNG 내보내기**: 캔버스를 PNG로 저장 (`save_png` 커맨드)
@@ -167,12 +152,9 @@ export interface DailyData {
 - 아이콘만 표시 (텍스트 없음), 24px 아이콘, 44px 버튼
 - 상단: 트래픽라이트 → 연/월 → 월간/일간 탭 → 내보내기
 - 하단: 저장 → 설정
-- (프라이버시 토글 알약 제거됨 — 내보내기 미리보기 모달로 이동)
 
 ## SettingsPanel 구조 (우측 패널)
 - **정보 탭**: 소프트웨어 버전 표시(`getVersion()`) + 수동 업데이트 버튼(`check()` → ask → downloadAndInstall → relaunch) + 다이어리 이름 + 백업 내보내기/불러오기 + DB 저장 위치
-- **화면 탭**: 줌 슬라이더 (50~150%) + 전체 폰트 선택(최근 사용 5개 상단 고정) + 폰트 크기/오프셋 + 유령 모드 강도 슬라이더 (모자이크/블러) + 초기화 버튼
-- **세부설정 탭**: 유령 모드 효과 강도 + 스크랩 옵션 기본값 편집 (ScrapFieldType: text|select|boolean|color|number|geocode)
   - `geocode` 타입: 도시 검색 입력 → Open-Meteo geocoding API 조회 → 결과 선택 → JSON 저장
 
 ## CropModal 동작 방식
@@ -218,12 +200,8 @@ api.db         getPath(), openFolder(), pickDir(), resetPath()
 | `globalBucket` | JSON (BucketItem[]) | 버킷리스트 (월간 뷰) |
 | `globalDDays` | JSON (DDayItem[]) | D-Day 목록 (월간 뷰) |
 | `globalProfile` | JSON ({name,bio,photo}) | 프로필 (월간 뷰) |
-| `ghostBlurIntensity` | float string | 유령 블러 강도 |
-| `ghostMosaicIntensity` | float string | 유령 모자이크 강도 |
 | `diaryName` | string | 다이어리 이름 (내보내기 파일명에 사용) |
-| `scrap_defaults` | JSON | 스크랩 카드 기본값. skincare.weatherRegion은 `{name,lat,lng,country,admin1}` JSON 문자열 |
 | `recentFonts` | JSON (string[5]) | 최근 선택한 폰트 (폰트 드롭다운 상단 고정) |
-| `defaultCurrency` | string (currency code) | 스크랩 카드 기본 통화 (KRW/USD/JPY/CNY/GBP/EUR/HKD/THB/TWD/SGD) |
 
 ## Rust 커맨드 목록
 ```
@@ -278,7 +256,7 @@ open_url
 - **워크플로우 구조**: `build-macos` + `build-windows` 병렬 → `release` job에서 합쳐 latest.json 생성
 - **latest.json 플랫폼**: `darwin-aarch64`, `windows-x86_64`
 - **Windows 아티팩트**: NSIS `.exe` (설치파일) + `.nsis.zip` + `.nsis.zip.sig` (업데이터)
-- **macOS 최초 실행**: 우클릭 → 열기 (또는 `xattr -dr com.apple.quarantine "/Applications/dida.app"`)
+- **macOS 최초 실행**: 우클릭 → 열기 (또는 `xattr -dr com.apple.quarantine "/Applications/PanDeckI.app"`)
 - **워크플로우**: `.github/workflows/release.yml`
 
 ## 크로스 플랫폼 구현 (macOS vs Windows)
@@ -287,7 +265,7 @@ open_url
 | 폰트 목록 | Python3 + NSFontManager | PowerShell + InstalledFontCollection |
 | 화면 캡처 | ObjC FFI → windowNumber → screencapture -l | Win32 GDI 직접 호출 (GetDC→BitBlt→GetDIBits, png 크레이트, DPI PER_MONITOR_V2) |
 | URL 열기 | `open` 명령 | `cmd /c start` |
-| DB 기본 경로 | iCloud Drive (`~/Library/Mobile Documents/...`) | AppData (`%APPDATA%/com.subinlee.dida/`) |
+| DB 기본 경로 | iCloud Drive (`~/Library/Mobile Documents/...`) | AppData (`%APPDATA%/com.subinlee.pandecki/`) |
 
 ## 성능 관련 주의사항
 - **base64 이미지**: CanvasEl의 `content`에 base64 dataURL을 저장하므로 엔트리 JSON이 매우 커질 수 있음
@@ -309,6 +287,6 @@ npm install
 
 # 4. 앱 실행
 export PATH="/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
-export CARGO_TARGET_DIR="$HOME/cargo_targets/dida"
+export CARGO_TARGET_DIR="$HOME/cargo_targets/pandecki"
 npm run tauri dev
 ```
