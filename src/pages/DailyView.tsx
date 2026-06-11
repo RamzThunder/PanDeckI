@@ -15,6 +15,9 @@ interface Props {
   onPrev: () => void
   onNext: () => void
   onToday: () => void
+  boardKey?: string
+  boardTitle?: string
+  onBackToDashboard?: () => void
   systemFonts: string[]
   globalFont: string
   mosaicIntensity: number
@@ -680,8 +683,8 @@ function InteractiveOverlay({ url, cmdHeld }: { url: string; cmdHeld: boolean })
   )
 }
 
-export default function DailyView({ currentDate, onPrev, onNext, onToday, systemFonts, globalFont, mosaicIntensity, blurIntensity, diaryName, gridSpacing }: Props): JSX.Element {
-  const dateStr = toLocalDate(currentDate)
+export default function DailyView({ currentDate, onPrev, onNext, onToday, boardKey, boardTitle, onBackToDashboard, systemFonts, globalFont, mosaicIntensity, blurIntensity, diaryName, gridSpacing }: Props): JSX.Element {
+  const dateStr = boardKey ?? toLocalDate(currentDate)
   const [data, setData] = useState<DailyData>(DEFAULT_DATA)
   const [saved, setSaved] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -733,7 +736,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
   const historyRef    = useRef<DailyData[]>([])
   const historyIdxRef = useRef(-1)
 
-  const dateLabel = currentDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
+  const dateLabel = boardTitle ?? currentDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
 
   useEffect(() => {
     api.video.getYoutubePort().then(setYoutubePort).catch(() => {})
@@ -1676,13 +1679,17 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, system
       <div className="flex items-center justify-between px-5 py-2 shrink-0"
         style={{ borderBottom: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.75)' }}
         onClick={e => e.stopPropagation()}>
-        <button onClick={onPrev} className="text-sm px-3 py-1 rounded-full hover:opacity-70" style={{ color: 'var(--color-primary-dark)' }}>‹ 전 날</button>
+        {onBackToDashboard
+          ? <button onClick={onBackToDashboard} className="text-sm px-3 py-1 rounded-full hover:opacity-70" style={{ color: 'var(--color-primary-dark)' }}>‹ 대시보드</button>
+          : <button onClick={onPrev} className="text-sm px-3 py-1 rounded-full hover:opacity-70" style={{ color: 'var(--color-primary-dark)' }}>‹ 전 날</button>}
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>{dateLabel}</h2>
-          <button onClick={onToday} className="text-xs px-2 py-0.5 rounded-full hover:opacity-70" style={{ color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary-dark)' }}>오늘</button>
+          {!boardKey && <button onClick={onToday} className="text-xs px-2 py-0.5 rounded-full hover:opacity-70" style={{ color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary-dark)' }}>오늘</button>}
           {saved && <span className="text-xs" style={{ color: 'var(--color-primary-dark)' }}>저장됨 ✓</span>}
         </div>
-        <button onClick={onNext} className="text-sm px-3 py-1 rounded-full hover:opacity-70" style={{ color: 'var(--color-primary-dark)' }}>다음 날 ›</button>
+        {boardKey
+          ? <span className="text-xs px-3" style={{ color: 'var(--color-text-muted)' }}>PanDeckI</span>
+          : <button onClick={onNext} className="text-sm px-3 py-1 rounded-full hover:opacity-70" style={{ color: 'var(--color-primary-dark)' }}>다음 날 ›</button>}
       </div>
 
       {/* Toolbar */}

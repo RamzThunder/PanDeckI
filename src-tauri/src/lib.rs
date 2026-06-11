@@ -67,18 +67,7 @@ fn resolve_db_path(app: &tauri::App) -> PathBuf {
         }
     }
 
-    // macOS: iCloud Drive 우선, 실패 시 App Support 폴백
-    #[cfg(target_os = "macos")]
-    {
-        let icloud_dir = dirs::home_dir()
-            .expect("no home dir")
-            .join("Library/Mobile Documents/com~apple~CloudDocs/dida_data");
-        if std::fs::create_dir_all(&icloud_dir).is_ok() {
-            return icloud_dir.join("diary.db");
-        }
-    }
-
-    app_data.join("diary.db")
+    app_data.join("pandecki.db")
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -94,12 +83,12 @@ pub fn run() {
 
             // Safari UA로 창 생성 — asset:// 오리진을 YouTube가 거부하는 문제 우회
             let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                .title("dida")
+                .title("PanDeckI")
                 .inner_size(1800.0, 1012.0)
                 .min_inner_size(900.0, 506.0)
                 .resizable(true)
-                .decorations(false)
-                .transparent(true)
+                .decorations(true)
+                .transparent(false)
                 .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15");
 
             // Windows: 시작 시 최대화, DWM 그림자 활성화 (macOS처럼 창 부유감)
@@ -118,6 +107,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_entry,
             commands::save_entry,
+            commands::delete_entry,
             commands::list_month_entries,
             commands::list_month_bgs,
             commands::get_monthly,

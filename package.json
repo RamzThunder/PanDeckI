@@ -1,7 +1,7 @@
 {
-  "name": "dida",
+  "name": "pandecki",
   "version": "1.0.22",
-  "description": "dida — digital diary",
+  "description": "PanDeckI classroom board",
   "type": "module",
   "scripts": {
     "dev": "vite",

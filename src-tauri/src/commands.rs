@@ -35,6 +35,14 @@ pub fn save_entry(state: State<DbState>, date: String, content: String) -> Resul
 }
 
 #[command]
+pub fn delete_entry(state: State<DbState>, date: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM entries WHERE date = ?1", [&date])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[command]
 pub fn list_month_entries(state: State<DbState>, year_month: String) -> Result<Vec<String>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let pattern = format!("{}%", year_month);

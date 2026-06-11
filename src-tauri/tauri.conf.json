@@ -1,7 +1,7 @@
 {
-  "productName": "dida",
+  "productName": "PanDeckI",
   "version": "1.0.22",
-  "identifier": "com.subinlee.dida",
+  "identifier": "com.subinlee.pandecki",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",

@@ -18,6 +18,9 @@ export const api = {
     async save(date: string, content: object): Promise<void> {
       await invoke('save_entry', { date, content: JSON.stringify(content) })
     },
+    async delete(date: string): Promise<void> {
+      await invoke('delete_entry', { date })
+    },
     async listMonth(yearMonth: string): Promise<string[]> {
       return invoke<string[]>('list_month_entries', { yearMonth })
     },
