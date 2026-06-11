@@ -1,4 +1,6 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { api } from '../api'
+import type { CanvasEl, DailyData } from './DailyView'
 
 export type BoardInfo = {
   id: string
@@ -14,28 +16,143 @@ interface Props {
   onCreate: (title: string, category: string, accent: string) => void
   onOpen: (board: BoardInfo) => void
   onDelete: (board: BoardInfo) => void
+  categories: string[]
+  category: string
+  createRequest: number
+  onCreateRequestHandled: () => void
+  onSelectCategory: (category: string) => void
+  onAddCategory: (name: string) => void
+  onRenameCategory: (oldName: string, newName: string) => void
+  onDeleteCategory: (name: string) => void
 }
 
-const CATEGORIES = ['수업', '학급 운영', '행사', '개인', '기타']
+type SortMode = 'updated' | 'created' | 'title'
+
+const DEFAULT_CATEGORIES = ['수업', '학급 운영', '행사', '개인', '기타']
 const ACCENTS = ['#7564e8', '#3b91c9', '#e47a68', '#58a47a', '#d29a42']
 
-export default function Dashboard({ boards, onCreate, onOpen, onDelete }: Props): JSX.Element {
-  const [category, setCategory] = useState('전체')
+function relativeDate(date: string): string {
+  const days = Math.max(0, Math.floor((Date.now() - new Date(date).getTime()) / 86400000))
+  if (days === 0) return '오늘 사용'
+  if (days === 1) return '어제 사용'
+  if (days < 30) return `${days}일 전 사용`
+  return new Date(date).toLocaleDateString('ko-KR')
+}
+
+function PreviewElement({ element }: { element: CanvasEl }): JSX.Element {
+  const style: React.CSSProperties = {
+    left: `${element.x / 16}%`,
+    top: `${element.y / 9}%`,
+    width: `${element.w / 16}%`,
+    height: `${element.h / 9}%`,
+    zIndex: element.z,
+    opacity: element.opacity / 100,
+    transform: `rotate(${element.rotation}deg)`,
+    borderRadius: element.photoRadius ? `${element.photoRadius}%` : undefined,
+  }
+
+  if (element.type === 'photo' || element.type === 'sticker') {
+    return <img className={`preview-element ${element.type}`} style={style} src={element.content} alt="" />
+  }
+
+  if (element.type === 'video') {
+    return <span className="preview-element preview-video" style={style}>▶</span>
+  }
+
+  if (element.type === 'card') {
+    return <span className="preview-element preview-card" style={style}>게시물</span>
+  }
+
+  return (
+    <span
+      className="preview-element preview-text"
+      style={{
+        ...style,
+        color: element.color,
+        background: element.bgOpacity > 0 ? element.bgColor : 'transparent',
+        fontWeight: element.bold ? 800 : 500,
+        fontStyle: element.italic ? 'italic' : undefined,
+        textAlign: element.align,
+      }}
+    >
+      {element.content.replace(/[#*_>`]/g, '')}
+    </span>
+  )
+}
+
+function BoardPreview({ board, data }: { board: BoardInfo; data?: DailyData | null }): JSX.Element {
+  const elements = data?.elements?.slice().sort((a, b) => a.z - b.z).slice(-30) ?? []
+  return (
+    <div className="board-preview" style={{ background: data?.bg ?? board.accent }}>
+      {data?.bgImage && <img className="preview-background" src={data.bgImage} alt="" />}
+      {elements.length > 0
+        ? elements.map(element => <PreviewElement key={element.id} element={element} />)
+        : <div className="preview-placeholder"><strong>{board.title.slice(0, 1)}</strong><span>PanDeckI</span></div>}
+    </div>
+  )
+}
+
+export default function Dashboard({ boards, onCreate, onOpen, onDelete, categories, category, createRequest, onCreateRequestHandled, onSelectCategory, onAddCategory, onRenameCategory, onDeleteCategory }: Props): JSX.Element {
   const [creating, setCreating] = useState(false)
   const [title, setTitle] = useState('')
-  const [newCategory, setNewCategory] = useState(CATEGORIES[0])
+  const [newCategory, setNewCategory] = useState(categories[0] ?? DEFAULT_CATEGORIES[0])
   const [accent, setAccent] = useState(ACCENTS[0])
+  const [query, setQuery] = useState('')
+  const [sortMode, setSortMode] = useState<SortMode>('updated')
+  const [previews, setPreviews] = useState<Record<string, DailyData | null>>({})
+  const [categoryDraft, setCategoryDraft] = useState('')
+  const [editingCategory, setEditingCategory] = useState<string | null>(null)
 
-  const visibleBoards = useMemo(
-    () => category === '전체' ? boards : boards.filter(board => board.category === category),
-    [boards, category],
-  )
+  useEffect(() => {
+    if (!categories.includes(newCategory)) setNewCategory(categories[0] ?? DEFAULT_CATEGORIES[0])
+  }, [categories, newCategory])
+
+  useEffect(() => {
+    if (createRequest > 0) { openCreate(); onCreateRequestHandled() }
+  }, [createRequest, onCreateRequestHandled])
+
+  useEffect(() => {
+    let alive = true
+    Promise.all(boards.map(async board => {
+      const data = await api.entry.get(`board_${board.id}`).catch(() => null)
+      return [board.id, data as DailyData | null] as const
+    })).then(entries => {
+      if (alive) setPreviews(Object.fromEntries(entries))
+    })
+    return () => { alive = false }
+  }, [boards])
 
   const counts = useMemo(() => {
     const result: Record<string, number> = { 전체: boards.length }
-    CATEGORIES.forEach(item => { result[item] = boards.filter(board => board.category === item).length })
+    categories.forEach(item => { result[item] = boards.filter(board => board.category === item).length })
     return result
-  }, [boards])
+  }, [boards, categories])
+
+  const filteredBoards = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase('ko-KR')
+    return boards
+      .filter(board => category === '전체' || board.category === category)
+      .filter(board => !needle || board.title.toLocaleLowerCase('ko-KR').includes(needle))
+      .sort((a, b) => {
+        if (sortMode === 'title') return a.title.localeCompare(b.title, 'ko-KR')
+        return new Date(sortMode === 'created' ? b.createdAt : b.updatedAt).getTime()
+          - new Date(sortMode === 'created' ? a.createdAt : a.updatedAt).getTime()
+      })
+  }, [boards, category, query, sortMode])
+
+  const groups = useMemo(() => {
+    const names = category === '전체'
+      ? [...categories, ...new Set(filteredBoards.map(board => board.category).filter(item => !categories.includes(item)))]
+      : [category]
+    return names
+      .map(name => ({ name, boards: filteredBoards.filter(board => board.category === name) }))
+      .filter(group => group.boards.length > 0)
+  }, [category, filteredBoards, categories])
+
+  const openCreate = (targetCategory = category === '전체' ? (categories[0] ?? DEFAULT_CATEGORIES[0]) : category) => {
+    setNewCategory(targetCategory)
+    setCreating(true)
+  }
 
   const create = () => {
     const cleanTitle = title.trim()
@@ -45,79 +162,81 @@ export default function Dashboard({ boards, onCreate, onOpen, onDelete }: Props)
     setCreating(false)
   }
 
-  return (
-    <div className="dashboard-shell">
-      <aside className="dashboard-sidebar">
-        <div className="dashboard-brand">
-          <span>P</span>
-          <div><strong>PanDeckI</strong><small>나의 판떼기</small></div>
-        </div>
-        <button className="new-board-button" onClick={() => setCreating(true)}>+ 새 판떼기</button>
-        <nav className="category-nav">
-          {['전체', ...CATEGORIES].map(item => (
-            <button key={item} className={category === item ? 'active' : ''} onClick={() => setCategory(item)}>
-              <span>{item}</span><small>{counts[item] ?? 0}</small>
-            </button>
-          ))}
-        </nav>
-        <p className="dashboard-note">판떼기를 열면 Dida의 캔버스와 객체 편집 도구를 그대로 사용할 수 있어요.</p>
-      </aside>
+  const submitCategory = () => {
+    const clean = categoryDraft.trim()
+    if (!clean || clean === '전체') { setEditingCategory(null); setCategoryDraft(''); return }
+    if (editingCategory === '__new__') onAddCategory(clean)
+    else if (editingCategory && clean !== editingCategory) onRenameCategory(editingCategory, clean)
+    setEditingCategory(null); setCategoryDraft('')
+  }
 
-      <main className="dashboard-main">
+  return (
+    <main className="dashboard-main">
         <header className="dashboard-header">
           <div>
             <p>대시보드</p>
             <h1>{category === '전체' ? '모든 판떼기' : category}</h1>
           </div>
-          <button onClick={() => setCreating(true)}>새 판떼기 만들기</button>
+          <div className="dashboard-tools">
+            <label className="dashboard-search"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="판떼기 검색" />{query && <button onClick={() => setQuery('')}>×</button>}</label>
+            <select value={sortMode} onChange={event => setSortMode(event.target.value as SortMode)}>
+              <option value="updated">최근 사용순</option>
+              <option value="created">최근 생성순</option>
+              <option value="title">이름순</option>
+            </select>
+            <button className="header-create-button" onClick={() => openCreate()}>+ 새 판떼기</button>
+          </div>
         </header>
 
-        {visibleBoards.length > 0 ? (
-          <section className="board-grid">
-            {visibleBoards.map(board => (
-              <article key={board.id} className="board-card" onClick={() => onOpen(board)}>
-                <div className="board-preview" style={{ background: `linear-gradient(145deg, ${board.accent}, ${board.accent}99)` }}>
-                  <span>PanDeckI</span>
-                  <strong>{board.title.slice(0, 1)}</strong>
+        <section className="dashboard-category-bar">
+          <button className={category === '전체' ? 'active' : ''} onClick={() => onSelectCategory('전체')}>전체 <small>{boards.length}</small></button>
+          {categories.map(item => editingCategory === item ? <input key={item} autoFocus value={categoryDraft} onChange={event => setCategoryDraft(event.target.value)} onBlur={submitCategory} onKeyDown={event => { if (event.key === 'Enter') submitCategory(); if (event.key === 'Escape') setEditingCategory(null) }} /> : <div className="dashboard-category-chip" key={item}><button className={category === item ? 'active' : ''} onClick={() => onSelectCategory(item)}>{item} <small>{counts[item] ?? 0}</small></button><span><button title="이름 변경" onClick={() => { setEditingCategory(item); setCategoryDraft(item) }}>✎</button><button title="삭제" disabled={categories.length <= 1} onClick={() => onDeleteCategory(item)}>×</button></span></div>)}
+          {editingCategory === '__new__' ? <input autoFocus value={categoryDraft} placeholder="새 카테고리" onChange={event => setCategoryDraft(event.target.value)} onBlur={submitCategory} onKeyDown={event => { if (event.key === 'Enter') submitCategory(); if (event.key === 'Escape') setEditingCategory(null) }} /> : <button className="category-add-chip" onClick={() => { setEditingCategory('__new__'); setCategoryDraft('') }}>+ 카테고리</button>}
+        </section>
+
+        {groups.length > 0 ? (
+          <div className="board-groups">
+            {groups.map(group => (
+              <section className="board-group" key={group.name}>
+                <header>
+                  <div><h2>{group.name}</h2><span>{group.boards.length}개</span></div>
+                  <button onClick={() => openCreate(group.name)}>+ 추가</button>
+                </header>
+                <div className="board-grid">
+                  {group.boards.map(board => (
+                    <article key={board.id} className="board-card" onClick={() => onOpen(board)}>
+                      <BoardPreview board={board} data={previews[board.id]} />
+                      <div className="board-card-info">
+                        <div><h3>{board.title}</h3><p>{relativeDate(board.updatedAt)}</p></div>
+                        <button title="판떼기 삭제" onClick={event => { event.stopPropagation(); onDelete(board) }}>×</button>
+                      </div>
+                    </article>
+                  ))}
+                  <button className="board-card add-card" onClick={() => openCreate(group.name)}><span>+</span><strong>새 판떼기</strong></button>
                 </div>
-                <div className="board-card-info">
-                  <div>
-                    <small>{board.category}</small>
-                    <h2>{board.title}</h2>
-                    <p>{new Date(board.updatedAt).toLocaleDateString('ko-KR')} 수정</p>
-                  </div>
-                  <button
-                    title="판떼기 삭제"
-                    onClick={event => { event.stopPropagation(); onDelete(board) }}
-                  >×</button>
-                </div>
-              </article>
+              </section>
             ))}
-            <button className="board-card add-card" onClick={() => setCreating(true)}>
-              <span>+</span><strong>새 판떼기 만들기</strong>
-            </button>
-          </section>
+          </div>
         ) : (
           <section className="empty-dashboard">
-            <span>+</span>
-            <h2>아직 판떼기가 없어요</h2>
-            <p>수업과 학급 운영에 필요한 첫 판떼기를 만들어보세요.</p>
-            <button onClick={() => setCreating(true)}>새 판떼기 만들기</button>
+            <span>+</span><h2>{query ? '검색 결과가 없어요' : '아직 판떼기가 없어요'}</h2>
+            <p>{query ? '다른 검색어를 입력해보세요.' : '수업과 학급 운영에 필요한 첫 판떼기를 만들어보세요.'}</p>
+            {!query && <button onClick={() => openCreate()}>새 판떼기 만들기</button>}
           </section>
         )}
-      </main>
+
 
       {creating && (
         <div className="create-board-backdrop" onClick={() => setCreating(false)}>
           <section className="create-board-modal" onClick={event => event.stopPropagation()}>
             <header><div><small>새로 만들기</small><h2>새 판떼기</h2></div><button onClick={() => setCreating(false)}>×</button></header>
             <label>판떼기 이름<input autoFocus value={title} onChange={event => setTitle(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') create() }} placeholder="예: 3학년 2반 아침 활동" /></label>
-            <label>카테고리<select value={newCategory} onChange={event => setNewCategory(event.target.value)}>{CATEGORIES.map(item => <option key={item}>{item}</option>)}</select></label>
+            <label>카테고리<select value={newCategory} onChange={event => setNewCategory(event.target.value)}>{categories.map(item => <option key={item}>{item}</option>)}</select></label>
             <div className="accent-picker"><span>대표 색상</span><div>{ACCENTS.map(color => <button key={color} className={accent === color ? 'active' : ''} style={{ background: color }} onClick={() => setAccent(color)} />)}</div></div>
             <footer><button onClick={() => setCreating(false)}>취소</button><button className="primary" disabled={!title.trim()} onClick={create}>판떼기 만들기</button></footer>
           </section>
         </div>
       )}
-    </div>
+    </main>
   )
 }

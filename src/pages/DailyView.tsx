@@ -17,7 +17,6 @@ interface Props {
   onToday: () => void
   boardKey?: string
   boardTitle?: string
-  onBackToDashboard?: () => void
   systemFonts: string[]
   globalFont: string
   mosaicIntensity: number
@@ -683,7 +682,7 @@ function InteractiveOverlay({ url, cmdHeld }: { url: string; cmdHeld: boolean })
   )
 }
 
-export default function DailyView({ currentDate, onPrev, onNext, onToday, boardKey, boardTitle, onBackToDashboard, systemFonts, globalFont, mosaicIntensity, blurIntensity, diaryName, gridSpacing }: Props): JSX.Element {
+export default function DailyView({ currentDate, onPrev, onNext, onToday, boardKey, boardTitle, systemFonts, globalFont, mosaicIntensity, blurIntensity, diaryName, gridSpacing }: Props): JSX.Element {
   const dateStr = boardKey ?? toLocalDate(currentDate)
   const [data, setData] = useState<DailyData>(DEFAULT_DATA)
   const [saved, setSaved] = useState(false)
@@ -1679,8 +1678,8 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
       <div className="flex items-center justify-between px-5 py-2 shrink-0"
         style={{ borderBottom: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.75)' }}
         onClick={e => e.stopPropagation()}>
-        {onBackToDashboard
-          ? <button onClick={onBackToDashboard} className="text-sm px-3 py-1 rounded-full hover:opacity-70" style={{ color: 'var(--color-primary-dark)' }}>‹ 대시보드</button>
+        {boardKey
+          ? <span className="w-20" />
           : <button onClick={onPrev} className="text-sm px-3 py-1 rounded-full hover:opacity-70" style={{ color: 'var(--color-primary-dark)' }}>‹ 전 날</button>}
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>{dateLabel}</h2>

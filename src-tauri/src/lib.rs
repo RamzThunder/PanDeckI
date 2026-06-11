@@ -72,18 +72,20 @@ fn resolve_db_path(app: &tauri::App) -> PathBuf {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let window_title = if cfg!(debug_assertions) { "PanDeckI Dev" } else { "PanDeckI" };
+
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .setup(|app| {
+        .setup(move |app| {
             let yt_port = start_youtube_proxy();
             app.manage(YoutubeProxyPort(yt_port));
 
             // Safari UA로 창 생성 — asset:// 오리진을 YouTube가 거부하는 문제 우회
             let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                .title("PanDeckI")
+                .title(window_title)
                 .inner_size(1800.0, 1012.0)
                 .min_inner_size(900.0, 506.0)
                 .resizable(true)

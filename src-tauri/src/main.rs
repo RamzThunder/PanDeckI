@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    dida_lib::run()
+    pandecki_dev_lib::run()
 }
