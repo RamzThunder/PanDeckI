@@ -48,12 +48,17 @@ button, input, textarea {
 }
 
 .app-shell {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1800px;
+  height: 1012px;
   display: grid;
   grid-template-columns: 230px minmax(0, 1fr);
   color: #24303d;
   background: #f4f6f8;
+  transform-origin: top left;
+  overflow: hidden;
 }
 
 .app-content { min-width: 0; height: 100%; overflow: hidden; }
@@ -730,94 +735,112 @@ button, input, textarea {
 .student-list-empty p { margin-bottom: 18px; font-size: 10px; }
 
 .random-picker {
-  min-width: 420px;
-  min-height: 430px;
+  min-width: 240px;
+  min-height: 170px;
   max-width: calc(100vw - 16px);
   max-height: calc(100vh - 16px);
-  padding: 18px;
-  overflow-y: auto;
-  border: 1px solid rgba(255,255,255,.6);
-  border-radius: 18px;
-  background: rgba(255,255,255,.97);
-  box-shadow: 0 16px 45px rgba(20, 25, 40, .28);
+  border: 2px solid #5c63ee;
+  background: #fff;
+  box-shadow: 0 8px 25px rgba(28, 35, 55, .08);
 }
 
 .classroom-widget { position: absolute; z-index: 150000; }
-.classroom-widget-resize-handle {
+.random-picker-toolbar {
   position: absolute;
-  right: 4px;
-  bottom: 4px;
-  width: 20px;
-  height: 20px;
-  border: 0;
-  background: linear-gradient(135deg, transparent 42%, #b3a9f4 43%, #b3a9f4 51%, transparent 52%, transparent 62%, #8f81e7 63%, #8f81e7 71%, transparent 72%);
-  cursor: nwse-resize;
+  left: 50%;
+  bottom: calc(100% + 16px);
+  transform: translateX(-50%);
+  padding: 8px 10px;
+  display: flex;
+  gap: 3px;
+  border: 1px solid #e5e8ec;
+  border-radius: 13px;
+  background: rgba(255,255,255,.98);
+  box-shadow: 0 5px 16px rgba(30, 38, 55, .16);
+  cursor: grab;
   touch-action: none;
 }
-.random-picker > header { margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; cursor: grab; touch-action: none; }
-.random-picker > header:active { cursor: grabbing; }
-.random-picker > header small { color: #7564e8; font-size: 9px; font-weight: 850; letter-spacing: .8px; }
-.random-picker > header h2 { margin-top: 3px; color: #293744; font-size: 22px; }
-.random-picker > header button { border: 0; color: #89949d; background: transparent; cursor: pointer; font-size: 25px; }
-
-.random-picker-controls { margin-bottom: 15px; display: flex; flex-wrap: wrap; align-items: end; gap: 10px; }
-.random-picker-controls label { min-width: 180px; flex: 1; display: flex; flex-direction: column; gap: 5px; color: #7c8790; font-size: 9px; font-weight: 750; }
-.random-picker-controls select { padding: 9px 10px; border: 1px solid #dce2e6; border-radius: 9px; outline: 0; color: #34424e; background: #fafbfc; font-size: 11px; }
-.random-picker-controls > span { padding: 9px 11px; border-radius: 9px; color: #687581; background: #f1f3f5; font-size: 10px; white-space: nowrap; }
-.random-picker-controls > span strong { color: #6352d0; font-size: 12px; }
-.random-picker-controls > button { padding: 9px 11px; border: 0; border-radius: 9px; color: #7564e8; background: #eeecff; cursor: pointer; font-size: 10px; font-weight: 750; }
-.random-picker-controls > button.active { color: #fff; background: #7564e8; }
-.random-picker-controls > button:disabled { opacity: .35; cursor: default; }
-
-.random-picker-attendance { margin-bottom: 14px; overflow: hidden; border: 1px solid #eadede; border-radius: 13px; background: #fffafa; }
-.random-picker-attendance > header { padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #f1e7e7; background: #fff; }
-.random-picker-attendance > header div { display: flex; flex-direction: column; gap: 2px; }
-.random-picker-attendance > header strong { color: #745b5b; font-size: 10px; }
-.random-picker-attendance > header span { color: #a18f8f; font-size: 8px; }
-.random-picker-attendance > header button { padding: 5px 8px; border: 0; border-radius: 7px; color: #a06c6c; background: #f7eded; cursor: pointer; font-size: 9px; font-weight: 750; }
-.random-picker-attendance > header button:disabled { opacity: .35; cursor: default; }
-.random-picker-attendance > div { max-height: 120px; padding: 10px; display: flex; flex-wrap: wrap; gap: 6px; overflow-y: auto; }
-.random-picker-attendance > div button { padding: 6px 10px; border: 1px solid #e7e1e1; border-radius: 20px; color: #746b6b; background: #fff; cursor: pointer; font-size: 10px; font-weight: 700; }
-.random-picker-attendance > div button.absent { border-color: #e4bcbc; color: #a34f4f; background: #fbeaea; text-decoration: line-through; }
+.random-picker-toolbar:active { cursor: grabbing; }
+.random-picker-toolbar > button { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 8px; color: #65717d; background: transparent; cursor: pointer; }
+.random-picker-toolbar > button:hover, .random-picker-toolbar > button.active { color: #565ee8; background: #f0f1ff; }
+.random-picker-toolbar svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.random-picker-more { position: absolute; top: calc(100% + 7px); right: 0; width: 125px; padding: 5px; border: 1px solid #e5e8ec; border-radius: 10px; background: #fff; box-shadow: 0 8px 20px rgba(30,38,55,.14); }
+.random-picker-more button { width: 100%; padding: 8px; border: 0; border-radius: 7px; color: #596673; background: transparent; cursor: pointer; font-size: 10px; font-weight: 700; }
+.random-picker-more button:hover { background: #f3f4f7; }
+.random-picker-more button:disabled, .random-picker-reset:disabled { opacity: .35; cursor: default; }
 
 .random-picker-stage {
-  min-height: 210px;
+  width: 100%;
+  height: 100%;
   padding: 24px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #fff;
+}
+
+.random-picker-stage-content {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  overflow: hidden;
-  border: 1px solid #d8d2ff;
-  border-radius: 22px;
-  background: radial-gradient(circle at 50% 20%, #fff 0, #f2efff 54%, #e7e1ff 100%);
+  gap: 22px;
+  transform-origin: center;
+  transition: transform .08s ease-out;
 }
 
-.random-picker-stage p { color: #8175bf; font-size: 12px; font-weight: 750; }
-.random-picker-stage strong { max-width: 100%; color: #4d3cad; font-size: clamp(38px, 6vw, 68px); line-height: 1.15; text-align: center; word-break: break-all; }
-.random-picker-stage span { color: #7564e8; font-size: 11px; font-weight: 700; text-align: center; }
+.random-picker-stage strong { max-width: 520px; color: #172033; font-size: 68px; line-height: 1.15; text-align: center; word-break: break-all; }
+.random-picker-stage strong.waiting { font-size: 32px; letter-spacing: 7px; }
+.random-picker-stage span { color: #8b95a1; font-size: 11px; font-weight: 700; text-align: center; }
 .random-picker-stage.drawing strong { animation: picker-pulse .14s ease-in-out infinite alternate; }
 @keyframes picker-pulse { from { transform: scale(.96); opacity: .72; } to { transform: scale(1.03); opacity: 1; } }
+.random-picker-winners { max-width: 540px; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px; }
+.random-picker-winners strong { padding: 8px 16px; border-radius: 14px; background: #f2f2ff; font-size: 46px; }
+.random-picker-winners.many { gap: 8px; }
+.random-picker-winners.many strong { padding: 6px 12px; font-size: 32px; }
 
-.random-picker-draw { width: 100%; margin: 14px 0; padding: 14px; border: 0; border-radius: 13px; color: #fff; background: #7564e8; cursor: pointer; font-size: 14px; font-weight: 850; box-shadow: 0 8px 18px rgba(117,100,232,.25); }
-.random-picker-draw:hover { background: #6857d8; }
+.random-picker-draw { width: 58px; height: 58px; display: grid; place-items: center; border: 0; border-radius: 50%; color: #fff; background: #5c63ee; cursor: pointer; box-shadow: 0 7px 16px rgba(92,99,238,.25); }
+.random-picker-draw svg { width: 25px; height: 25px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.random-picker-draw:hover { background: #4f56df; transform: translateY(-1px); }
 .random-picker-draw:disabled { opacity: .45; cursor: default; box-shadow: none; }
 
-.random-picker-history { overflow: hidden; border: 1px solid #e3e7ea; border-radius: 13px; background: #f8fafb; }
-.random-picker-history header { padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e8ecef; background: #fff; }
-.random-picker-history header strong { color: #56636e; font-size: 10px; }
-.random-picker-history header span { color: #89949d; font-size: 9px; }
-.random-picker-history > div { max-height: 115px; padding: 10px; display: flex; flex-wrap: wrap; gap: 6px; overflow-y: auto; }
-.random-picker-history > div button { padding: 5px 7px 5px 9px; display: flex; align-items: center; gap: 5px; border: 0; border-radius: 20px; color: #7564e8; background: #eeecff; cursor: pointer; font-size: 10px; font-weight: 750; }
-.random-picker-history > div button:hover { background: #e2defe; }
-.random-picker-history > div button span { width: 14px; height: 14px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: #a69bea; font-size: 10px; line-height: 1; }
-.random-picker-history > p, .random-picker-empty { padding: 24px; color: #929ca5; font-size: 10px; text-align: center; }
-.random-picker-empty h3 { margin-bottom: 6px; color: #56636e; font-size: 15px; }
+.random-picker-remembered div button { padding: 5px 6px 5px 8px; display: flex; align-items: center; gap: 5px; border: 0; border-radius: 20px; color: #535bdc; background: #fff; cursor: pointer; font-size: 9px; font-weight: 750; white-space: nowrap; box-shadow: 0 1px 3px rgba(45,51,110,.1); }
+.random-picker-remembered div button span { width: 13px; height: 13px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: #8990ee; font-size: 9px; line-height: 1; }
+.random-picker-remembered div button:hover { background: #e9eaff; }
 
-@media (max-width: 1000px) {
-  .app-shell { grid-template-columns: 56px minmax(0, 1fr); }
-  .student-list-workspace { grid-template-columns: 1fr; }
-  .student-list-preview { min-height: 260px; }
-  .random-picker { min-width: min(420px, calc(100vw - 16px)); }
-}
+.random-picker-resize { position: absolute; width: 18px; height: 18px; border: 3px solid #5c63ee; border-radius: 50%; background: #fff; touch-action: none; }
+.random-picker-resize.nw { left: -10px; top: -10px; cursor: nwse-resize; }
+.random-picker-resize.ne { right: -10px; top: -10px; cursor: nesw-resize; }
+.random-picker-resize.sw { left: -10px; bottom: -10px; cursor: nesw-resize; }
+.random-picker-resize.se { right: -10px; bottom: -10px; cursor: nwse-resize; }
+
+.random-picker-settings { position: absolute; left: calc(100% + 18px); top: -2px; width: 300px; max-height: min(620px, calc(100vh - 24px)); padding: 15px; overflow-y: auto; border: 1px solid #e4e8ed; border-radius: 14px; background: #fff; box-shadow: 0 14px 35px rgba(25,34,50,.18); }
+.random-picker-settings > header { margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; color: #273342; }
+.random-picker-settings > header strong { font-size: 13px; }
+.random-picker-settings > header button { border: 0; color: #87929d; background: transparent; cursor: pointer; font-size: 18px; }
+.random-picker-list-select { margin-bottom: 12px; display: flex; flex-direction: column; gap: 5px; color: #7c8790; font-size: 9px; font-weight: 750; }
+.random-picker-list-select select { padding: 8px 9px; border: 1px solid #dce2e6; border-radius: 8px; outline: 0; color: #34424e; background: #fafbfc; font-size: 11px; }
+.random-picker-count { margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; color: #596673; font-size: 10px; font-weight: 750; }
+.random-picker-count span { display: flex; align-items: center; gap: 5px; }
+.random-picker-count input { width: 58px; padding: 7px 8px; border: 1px solid #dce2e6; border-radius: 8px; outline: 0; color: #34424e; background: #fafbfc; font-size: 11px; text-align: center; }
+.random-picker-count input:focus { border-color: #5c63ee; }
+.random-picker-count small { color: #89949d; font-size: 9px; }
+.random-picker-students { max-height: 265px; margin-bottom: 15px; overflow-y: auto; border: 1px solid #edf0f3; border-radius: 9px; }
+.random-picker-students label { padding: 7px 9px; display: flex; align-items: center; gap: 7px; color: #4d5965; cursor: pointer; font-size: 10px; }
+.random-picker-students label:nth-child(even) { background: #f7f9fa; }
+.random-picker-students input { accent-color: #5c63ee; }
+.random-picker-students span { width: 18px; color: #8b96a1; text-align: right; }
+.random-picker-toggle { padding: 11px 1px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid #edf0f3; cursor: pointer; }
+.random-picker-toggle span { display: flex; flex-direction: column; gap: 2px; }
+.random-picker-toggle strong { color: #3f4b57; font-size: 10px; }
+.random-picker-toggle small { color: #929ca5; font-size: 8px; }
+.random-picker-toggle input { width: 30px; height: 17px; accent-color: #5c63ee; }
+.random-picker-remembered { margin: 5px 0 10px; overflow: hidden; border: 1px solid #e7e8fb; border-radius: 9px; background: #f8f8ff; }
+.random-picker-remembered header { padding: 8px 9px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e7e8fb; background: #fff; }
+.random-picker-remembered header strong { color: #5259c9; font-size: 9px; }
+.random-picker-remembered header span { color: #89929c; font-size: 8px; }
+.random-picker-remembered > div { max-height: 90px; padding: 8px; display: flex; flex-wrap: wrap; gap: 5px; overflow-y: auto; }
+.random-picker-remembered > p { padding: 12px 8px; color: #9aa2aa; font-size: 8px; text-align: center; }
+.random-picker-reset { width: 100%; margin-top: 4px; padding: 9px; border: 0; border-radius: 8px; color: #5c63ee; background: #eff0ff; cursor: pointer; font-size: 10px; font-weight: 750; }
+.random-picker-empty { padding: 24px; color: #929ca5; font-size: 10px; text-align: center; }
+.random-picker-empty h3 { margin-bottom: 6px; color: #56636e; font-size: 15px; }

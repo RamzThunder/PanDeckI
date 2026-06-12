@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import DailyView from './pages/DailyView'
 import AppSidebar from './components/AppSidebar'
@@ -9,7 +9,17 @@ import { api } from './api'
 import { PRESET_THEMES, applyGlobalFont, applyTheme } from './store/theme'
 
 const DEFAULT_CATEGORIES = ['수업', '학급 운영', '행사', '개인', '기타']
+const APP_WIDTH = 1800
+const APP_HEIGHT = 1012
+const WINDOW_TITLEBAR_HEIGHT = 28
 type AppView = 'dashboard' | 'students'
+
+function resizeWindow(zoom: number) {
+  invoke('resize_window', {
+    width: Math.round(APP_WIDTH * zoom),
+    height: Math.round(APP_HEIGHT * zoom) + WINDOW_TITLEBAR_HEIGHT,
+  }).catch(() => {})
+}
 
 function shiftDate(date: Date, amount: number) {
   const next = new Date(date)
@@ -34,6 +44,23 @@ export default function App(): JSX.Element {
   const [createRequest, setCreateRequest] = useState(0)
   const [appView, setAppView] = useState<AppView>('dashboard')
   const [studentLists, setStudentLists] = useState<StudentList[]>([])
+  const zoomRef = useRef(appZoom)
+  zoomRef.current = appZoom
+
+  useEffect(() => {
+    const onWheel = (event: WheelEvent) => {
+      if (!event.metaKey && !event.ctrlKey) return
+      event.preventDefault()
+      const delta = event.deltaY > 0 ? -0.05 : 0.05
+      const next = Math.max(0.5, Math.min(1.5, Math.round((zoomRef.current + delta) * 20) / 20))
+      zoomRef.current = next
+      setAppZoom(next)
+      resizeWindow(next)
+      api.settings.set('appZoom', String(next)).catch(() => {})
+    }
+    window.addEventListener('wheel', onWheel, { passive: false })
+    return () => window.removeEventListener('wheel', onWheel)
+  }, [])
 
   useEffect(() => {
     async function loadSettings() {
@@ -57,7 +84,13 @@ export default function App(): JSX.Element {
       applyGlobalFont(font)
 
       const zoom = Number(settings.appZoom)
-      if (Number.isFinite(zoom) && zoom > 0) setAppZoom(zoom)
+      if (Number.isFinite(zoom) && zoom > 0) {
+        setAppZoom(zoom)
+        zoomRef.current = zoom
+        resizeWindow(zoom)
+      } else {
+        resizeWindow(1)
+      }
       const scale = Number(settings.fontScale)
       if (Number.isFinite(scale) && scale > 0) setFontScale(scale)
       const offset = Number(settings.fontOffsetY)
@@ -190,10 +223,20 @@ export default function App(): JSX.Element {
     setCreateRequest(value => value + 1)
   }
 
+  const changeZoom = (zoom: number) => {
+    setAppZoom(zoom)
+    zoomRef.current = zoom
+  }
+
+  const commitZoom = (zoom: number) => {
+    resizeWindow(zoom)
+    saveSetting('appZoom', String(zoom))
+  }
+
   return (
-    <div className="app-shell">
+    <div className="app-shell" style={{ transform: `scale(${appZoom})` }}>
       <AppSidebar dashboardActive={appView === 'dashboard' && !activeBoard} studentsActive={appView === 'students'} settingsOpen={settingsOpen} onDashboard={() => selectCategory('전체')} onStudents={() => { setAppView('students'); setActiveBoard(null); setSettingsOpen(false) }} onSettings={() => setSettingsOpen(value => !value)} />
-      <section className="app-content" style={{ transform: `scale(${appZoom})`, transformOrigin: 'top left', width: `${100 / appZoom}%`, height: `${100 / appZoom}%` }}>
+      <section className="app-content">
         {appView === 'students' ? (
           <StudentLists lists={studentLists} onSave={saveStudentList} onDelete={deleteStudentList} />
         ) : !activeBoard ? (
@@ -215,7 +258,7 @@ export default function App(): JSX.Element {
           </main>
         )}
       </section>
-      {settingsOpen && <SettingsPanel activeThemeId={activeThemeId} onThemeChange={id => { setActiveThemeId(id); saveSetting('active_theme', id) }} appZoom={appZoom} onZoomChange={setAppZoom} onZoomCommit={value => saveSetting('appZoom', String(value))} globalFont={globalFont} onGlobalFontChange={value => { setGlobalFont(value); applyGlobalFont(value); saveSetting('globalFont', value) }} systemFonts={systemFonts} fontScale={fontScale} onFontScaleChange={value => { setFontScale(value); saveSetting('fontScale', String(value)) }} fontOffsetY={fontOffsetY} onFontOffsetYChange={value => { setFontOffsetY(value); saveSetting('fontOffsetY', String(value)) }} diaryName={diaryName} onDiaryNameChange={value => { setDiaryName(value); saveSetting('diaryName', value) }} onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsPanel activeThemeId={activeThemeId} onThemeChange={id => { setActiveThemeId(id); saveSetting('active_theme', id) }} appZoom={appZoom} onZoomChange={changeZoom} onZoomCommit={commitZoom} globalFont={globalFont} onGlobalFontChange={value => { setGlobalFont(value); applyGlobalFont(value); saveSetting('globalFont', value) }} systemFonts={systemFonts} fontScale={fontScale} onFontScaleChange={value => { setFontScale(value); saveSetting('fontScale', String(value)) }} fontOffsetY={fontOffsetY} onFontOffsetYChange={value => { setFontOffsetY(value); saveSetting('fontOffsetY', String(value)) }} diaryName={diaryName} onDiaryNameChange={value => { setDiaryName(value); saveSetting('diaryName', value) }} onClose={() => setSettingsOpen(false)} />}
     </div>
   )
 }

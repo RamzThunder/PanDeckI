@@ -88,7 +88,7 @@ pub fn run() {
                 .title(window_title)
                 .inner_size(1800.0, 1012.0)
                 .min_inner_size(900.0, 506.0)
-                .resizable(true)
+                .resizable(false)
                 .decorations(true)
                 .transparent(false)
                 .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15");

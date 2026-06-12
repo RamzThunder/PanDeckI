@@ -567,7 +567,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
   const [showBackgroundMenu, setShowBackgroundMenu] = useState(false)
   const [showRandomPicker, setShowRandomPicker] = useState(false)
   const [randomPickerPosition, setRandomPickerPosition] = useState({ x: 120, y: 90 })
-  const [randomPickerSize, setRandomPickerSize] = useState({ width: 620, height: 650 })
+  const [randomPickerSize, setRandomPickerSize] = useState({ width: 620, height: 380 })
   const [dockVisible, setDockVisible] = useState(true)
   const dockHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [showVideoUrlInput, setShowVideoUrlInput] = useState(false)
@@ -1217,6 +1217,8 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
       const op = opRef.current
       if (!op) return
       const canvas = canvasRef.current
+      const canvasRect = canvas?.getBoundingClientRect()
+      const pointerScale = canvas && canvasRect ? canvas.offsetWidth / canvasRect.width : 1
 
       if (op.kind === 'marquee') {
         op.x2 = (e.clientX - op.canvasLeft) * op.scale
@@ -1231,8 +1233,8 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
       }
 
       if (op.kind === 'multidrag') {
-        op.dx = e.clientX - op.sx
-        op.dy = e.clientY - op.sy
+        op.dx = (e.clientX - op.sx) * pointerScale
+        op.dy = (e.clientY - op.sy) * pointerScale
         for (const id of op.ids) {
           const orig = op.origPositions[id]
           if (!orig || !canvas) continue
@@ -1253,7 +1255,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
       }
 
       if (op.kind === 'multiresize') {
-        const dx = e.clientX - op.sx
+        const dx = (e.clientX - op.sx) * pointerScale
         const scale = Math.max(0.1, (op.bw + dx) / op.bw)
         const boxNode = canvas?.querySelector<HTMLElement>('#multi-sel-box')
         if (boxNode) { boxNode.style.width = `${op.bw * scale}px`; boxNode.style.height = `${op.bh * scale}px` }
@@ -1274,7 +1276,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
 
       if (op.kind === 'drag') {
         if (!node || !canvas) return
-        const dx = e.clientX - op.sx, dy = e.clientY - op.sy
+        const dx = (e.clientX - op.sx) * pointerScale, dy = (e.clientY - op.sy) * pointerScale
         const sg = (v: number) => v
         const elRot = ((dataRef.current.elements.find(el => el.id === op.id)?.rotation ?? 0) * Math.PI) / 180
         const W = node.offsetWidth, H = node.offsetHeight
@@ -1286,7 +1288,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
         op.cx = newX; op.cy = newY
       } else if (op.kind === 'resize') {
         const rad = (op.rot * Math.PI) / 180
-        const dx = e.clientX - op.sx, dy = e.clientY - op.sy
+        const dx = (e.clientX - op.sx) * pointerScale, dy = (e.clientY - op.sy) * pointerScale
         const exDelta = dx * Math.cos(rad) + dy * Math.sin(rad)
         const eyDelta = -dx * Math.sin(rad) + dy * Math.cos(rad)
         if (op.lockAspect) {
@@ -1347,7 +1349,9 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
       } else if (op.kind === 'rotate') {
         next = { ...dataRef.current, elements: dataRef.current.elements.map(el => el.id === op.id ? { ...el, rotation: op.cr } : el) }
       } else if (op.kind === 'multiresize') {
-        const scale = Math.max(0.1, (op.bw + (_e.clientX - op.sx)) / op.bw)
+        const rect = canvasRef.current?.getBoundingClientRect()
+        const pointerScale = canvasRef.current && rect ? canvasRef.current.offsetWidth / rect.width : 1
+        const scale = Math.max(0.1, (op.bw + (_e.clientX - op.sx) * pointerScale) / op.bw)
         next = { ...dataRef.current, elements: dataRef.current.elements.map(el => {
           if (!op.ids.includes(el.id)) return el
           const orig = op.orig[el.id]
