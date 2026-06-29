@@ -749,7 +749,7 @@ button, input, textarea {
 }
 .random-picker.selected { border-color: #5c63ee; }
 
-.classroom-widget { position: absolute; z-index: 150000; }
+.classroom-widget { position: absolute; }
 .random-picker-toolbar {
   position: absolute;
   left: 50%;
@@ -781,9 +781,9 @@ button, input, textarea {
 .random-picker-stage {
   width: 100%;
   height: 100%;
-  padding: 24px;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   overflow: hidden;
   background: #fff;
   cursor: grab;
@@ -791,25 +791,35 @@ button, input, textarea {
 }
 .random-picker-stage:active { cursor: grabbing; }
 
-.random-picker-stage-content {
+.random-picker-text-area {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 22px;
-  transform-origin: center;
-  transition: transform .08s ease-out;
+  gap: 10px;
+  padding: 16px 24px 8px;
+  overflow: hidden;
+}
+.random-picker-button-area {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 0;
+  transform-origin: center bottom;
 }
 
-.random-picker-stage strong { max-width: 520px; color: #172033; font-size: 68px; line-height: 1.15; text-align: center; word-break: break-all; }
-.random-picker-stage strong.waiting { font-size: 32px; letter-spacing: 7px; }
+.random-picker-stage strong { color: #172033; line-height: 1.1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 800; }
+.random-picker-stage strong.waiting { letter-spacing: 7px; color: #b8c4ce; }
 .random-picker-stage span { color: #8b95a1; font-size: 11px; font-weight: 700; text-align: center; }
 .random-picker-stage.drawing strong { animation: picker-pulse .14s ease-in-out infinite alternate; }
 @keyframes picker-pulse { from { transform: scale(.96); opacity: .72; } to { transform: scale(1.03); opacity: 1; } }
-.random-picker-winners { max-width: 540px; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px; }
-.random-picker-winners strong { padding: 8px 16px; border-radius: 14px; background: #f2f2ff; font-size: 46px; }
-.random-picker-winners.many { gap: 8px; }
-.random-picker-winners.many strong { padding: 6px 12px; font-size: 32px; }
+.random-picker-winners { width: 100%; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; }
+.random-picker-winners strong { padding: 6px 14px; border-radius: 14px; background: #f2f2ff; }
+.random-picker-winners.many { gap: 6px; }
 
 .random-picker-draw { width: 58px; height: 58px; display: grid; place-items: center; border: 0; border-radius: 50%; color: #fff; background: #5c63ee; cursor: pointer; box-shadow: 0 7px 16px rgba(92,99,238,.25); }
 .random-picker-draw svg { width: 25px; height: 25px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -855,6 +865,36 @@ button, input, textarea {
 .random-picker-remembered > p { padding: 12px 8px; color: #9aa2aa; font-size: 8px; text-align: center; }
 .random-picker-reset { width: 100%; margin-top: 4px; padding: 9px; border: 0; border-radius: 8px; color: #5c63ee; background: #eff0ff; cursor: pointer; font-size: 10px; font-weight: 750; }
 .random-picker-empty { padding: 24px; color: #929ca5; font-size: 10px; text-align: center; }
+
+/* Mode toggle */
+.random-picker-mode-toggle { flex-shrink: 0; display: flex; gap: 3px; padding: 8px 16px 0; }
+.random-picker-mode-toggle button { flex: 1; padding: 5px 0; border: 1px solid var(--color-border); border-radius: 20px; color: var(--color-text-muted); background: transparent; cursor: pointer; font-size: 10px; font-weight: 700; }
+.random-picker-mode-toggle button.active { border-color: var(--color-primary); color: var(--color-primary-dark); background: var(--color-primary-light); }
+.random-picker-mode-toggle button:hover:not(.active) { background: #f5f5f5; }
+
+/* Groups display */
+.random-picker-groups { flex: 1; width: 100%; display: grid; box-sizing: border-box; overflow: hidden; }
+.random-picker-group-card { display: flex; flex-direction: column; align-items: center; border: 1.5px solid #e8eaff; border-radius: 10px; background: #f8f8ff; overflow: hidden; }
+.random-picker-group-header { width: 100%; padding: 4px 0; text-align: center; font-weight: 800; color: #5c63ee; background: #ededff; letter-spacing: 1px; }
+.random-picker-group-name { width: 100%; padding: 1px 6px; text-align: center; color: #1a2236; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Forbidden pairs settings */
+.random-picker-forbidden { margin-bottom: 12px; border: 1px solid #e7e8fb; border-radius: 9px; overflow: hidden; background: #f8f8ff; }
+.random-picker-forbidden > header { padding: 8px 9px; display: flex; align-items: center; justify-content: space-between; background: #fff; border-bottom: 1px solid #e7e8fb; }
+.random-picker-forbidden > header strong { color: #5259c9; font-size: 9px; }
+.random-picker-forbidden > header span { color: #89929c; font-size: 8px; }
+.random-picker-forbidden > p { padding: 10px 8px; color: #9aa2aa; font-size: 8px; text-align: center; }
+.random-picker-forbidden-add { padding: 8px; display: flex; align-items: center; gap: 5px; }
+.random-picker-forbidden-add select { flex: 1; min-width: 0; padding: 5px 4px; border: 1px solid #dce2e6; border-radius: 7px; font-size: 10px; color: #34424e; background: #fff; outline: none; }
+.random-picker-forbidden-add span { color: #8b96a1; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+.random-picker-forbidden-add button { padding: 5px 9px; border: 0; border-radius: 7px; color: #fff; background: #5c63ee; cursor: pointer; font-size: 9px; font-weight: 750; white-space: nowrap; flex-shrink: 0; }
+.random-picker-forbidden-add button:disabled { opacity: .45; cursor: default; }
+.random-picker-forbidden-list { max-height: 130px; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
+.random-picker-forbidden-item { padding: 4px 6px; display: flex; align-items: center; gap: 5px; border-radius: 7px; background: #fff; box-shadow: 0 1px 3px rgba(45,51,110,.08); }
+.random-picker-forbidden-item span { flex: 1; color: #3f4b57; font-size: 10px; font-weight: 700; text-align: center; }
+.random-picker-forbidden-item small { color: #c94040; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+.random-picker-forbidden-item > button { width: 16px; height: 16px; display: grid; place-items: center; border: 0; border-radius: 50%; color: #fff; background: #d0d5db; cursor: pointer; font-size: 10px; line-height: 1; flex-shrink: 0; }
+.random-picker-forbidden-item > button:hover { background: #c94040; }
 
 .clock-add-menu {
   width: 190px;

@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { convertFileSrc } from '@tauri-apps/api/core'
+import QRCode from 'qrcode'
 import { api } from '../api'
 import { toLocalDate } from '../store/diary'
 import StickerPicker from '../components/StickerPicker'
@@ -634,11 +635,14 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
   const [showStickers, setShowStickers] = useState(false)
   const [showVideoMenu, setShowVideoMenu] = useState(false)
   const [showClockMenu, setShowClockMenu] = useState(false)
+  const [showQrMenu, setShowQrMenu] = useState(false)
+  const [qrInput, setQrInput] = useState('')
   const [showBackgroundMenu, setShowBackgroundMenu] = useState(false)
   const [showRandomPicker, setShowRandomPicker] = useState(false)
   const [randomPickerSelected, setRandomPickerSelected] = useState(false)
   const [randomPickerPosition, setRandomPickerPosition] = useState({ x: 120, y: 90 })
   const [randomPickerSize, setRandomPickerSize] = useState({ width: 620, height: 380 })
+  const [randomPickerZ, setRandomPickerZ] = useState(10000)
   const [dockVisible, setDockVisible] = useState(true)
   const dockHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [showVideoUrlInput, setShowVideoUrlInput] = useState(false)
@@ -687,9 +691,9 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
   const scheduleDockHide = useCallback(() => {
     if (dockHideTimerRef.current) clearTimeout(dockHideTimerRef.current)
     dockHideTimerRef.current = setTimeout(() => {
-      if (!showStickers && !showVideoMenu && !showClockMenu && !showBackgroundMenu) setDockVisible(false)
+      if (!showStickers && !showVideoMenu && !showClockMenu && !showQrMenu && !showBackgroundMenu) setDockVisible(false)
     }, 1400)
-  }, [showStickers, showVideoMenu, showClockMenu, showBackgroundMenu])
+  }, [showStickers, showVideoMenu, showClockMenu, showQrMenu, showBackgroundMenu])
 
   useEffect(() => {
     scheduleDockHide()
@@ -699,8 +703,8 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
   }, [scheduleDockHide])
 
   useEffect(() => {
-    if (showStickers || showVideoMenu || showClockMenu || showBackgroundMenu) showDock()
-  }, [showStickers, showVideoMenu, showClockMenu, showBackgroundMenu, showDock])
+    if (showStickers || showVideoMenu || showClockMenu || showQrMenu || showBackgroundMenu) showDock()
+  }, [showStickers, showVideoMenu, showClockMenu, showQrMenu, showBackgroundMenu, showDock])
 
   useEffect(() => {
     const timer = window.setInterval(() => setClockTime(new Date()), 1000)
@@ -1622,6 +1626,21 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
     setShowClockMenu(false)
   }
 
+  const addQrCode = async (url: string) => {
+    const trimmed = url.trim()
+    if (!trimmed) return
+    const dataUrl = await QRCode.toDataURL(trimmed, { width: 400, margin: 1, color: { dark: '#000000', light: '#ffffff' } })
+    const c = canvasRef.current
+    const size = 400
+    const cx = c ? c.clientWidth / 2 - size / 2 : 100
+    const cy = c ? c.clientHeight / 2 - size / 2 : 100
+    const mz = dataRef.current.elements.reduce((m, el) => Math.max(m, el.z), 0)
+    const el: CanvasEl = { ...makeEl('photo', cx, cy, dataUrl, mz), w: size, h: size, linkUrl: trimmed }
+    const next = { ...dataRef.current, elements: [...dataRef.current.elements, el] }
+    setData(next); persist(next); setSelectedId(el.id)
+    setShowQrMenu(false); setQrInput('')
+  }
+
   const selectedEl = data.elements.find(el => el.id === selectedId) ?? null
   const filteredFonts = fontSearch
     ? systemFonts.filter(f => f.toLowerCase().includes(fontSearch.toLowerCase()))
@@ -1638,12 +1657,12 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
       onMouseMove={e => {
         const rect = e.currentTarget.getBoundingClientRect()
         if (rect.bottom - e.clientY <= 100) showDock()
-        else if (dockVisible && !showStickers && !showVideoMenu && !showClockMenu && !showBackgroundMenu) scheduleDockHide()
+        else if (dockVisible && !showStickers && !showVideoMenu && !showClockMenu && !showQrMenu && !showBackgroundMenu) scheduleDockHide()
       }}
       onClick={e => {
         if (e.metaKey || e.ctrlKey) return
         if (justMarqueedRef.current) { justMarqueedRef.current = false; return }
-        setSelectedId(null); setMultiIds([]); setRandomPickerSelected(false); setEditingId(null); setShowStickers(false); setShowFontList(false); setShowFontSizeList(false); setShowVideoMenu(false); setShowClockMenu(false); setShowBackgroundMenu(false)
+        setSelectedId(null); setMultiIds([]); setRandomPickerSelected(false); setEditingId(null); setShowStickers(false); setShowFontList(false); setShowFontSizeList(false); setShowVideoMenu(false); setShowClockMenu(false); setShowQrMenu(false); setShowBackgroundMenu(false)
       }}>
 
       {/* SVG defs — clip paths */}
@@ -1768,6 +1787,41 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
               <button onClick={() => addClock('digitalClock')} className="clock-add-option">
                 <span className="clock-option-preview digital">12:34:56</span>
                 <strong>디지털</strong>
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="w-px self-stretch mx-0.5" style={{ background: 'var(--color-border)' }} />
+
+        {/* QR code */}
+        <div className="relative">
+          <button onClick={() => { setShowQrMenu(v => !v); setShowStickers(false); setShowVideoMenu(false); setShowClockMenu(false); setShowBackgroundMenu(false) }}
+            className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
+            style={{ background: showQrMenu ? 'var(--color-primary)' : 'var(--color-primary-light)', color: showQrMenu ? '#fff' : 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>
+            QR
+          </button>
+          {showQrMenu && (
+            <div className="absolute bottom-full left-0 mb-2 z-50 rounded-2xl shadow-2xl"
+              style={{ width: 280, padding: 14, background: 'rgba(255,255,255,0.97)', border: '1px solid var(--color-border)' }}
+              onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-2">
+                <strong className="text-xs" style={{ color: 'var(--color-text)' }}>QR 코드 만들기</strong>
+                <button onClick={() => setShowQrMenu(false)} style={{ border: 0, background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: 16 }}>×</button>
+              </div>
+              <p className="text-xs mb-2" style={{ color: 'var(--color-text-muted)' }}>URL을 입력하면 QR 코드를 캔버스에 추가해요</p>
+              <input
+                type="text"
+                value={qrInput}
+                onChange={e => setQrInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') addQrCode(qrInput) }}
+                placeholder="https://..."
+                autoFocus
+                style={{ width: '100%', padding: '6px 8px', fontSize: 11, border: '1px solid var(--color-border)', borderRadius: 8, outline: 'none', boxSizing: 'border-box', marginBottom: 8 }}
+              />
+              <button onClick={() => addQrCode(qrInput)}
+                className="w-full text-xs py-1.5 rounded-full font-medium"
+                style={{ background: 'var(--color-primary)', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                캔버스에 추가
               </button>
             </div>
           )}
@@ -2583,6 +2637,11 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
           setShowRandomPicker(false)
           setRandomPickerSelected(false)
         }}
+        z={randomPickerZ}
+        onBringFront={() => setRandomPickerZ(maxZ + 1)}
+        onSendBack={() => setRandomPickerZ(0)}
+        onMoveForward={() => setRandomPickerZ(z => z + 1)}
+        onMoveBack={() => setRandomPickerZ(z => Math.max(0, z - 1))}
       />
 
       {exportPreview && (
