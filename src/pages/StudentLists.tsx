@@ -4,6 +4,7 @@ export interface StudentList {
   id: string
   title: string
   students: string[]
+  avoidPairs?: [number, number][]
 }
 
 interface Props {
@@ -23,6 +24,9 @@ export default function StudentLists({ lists, onSave, onDelete }: Props): JSX.El
   const [studentText, setStudentText] = useState('')
   const students = parseStudents(studentText)
 
+  const [newAvoidA, setNewAvoidA] = useState(0)
+  const [newAvoidB, setNewAvoidB] = useState(1)
+
   useEffect(() => {
     if (selectedId && !lists.some(list => list.id === selectedId)) setSelectedId(lists[0]?.id ?? null)
   }, [lists, selectedId])
@@ -30,6 +34,8 @@ export default function StudentLists({ lists, onSave, onDelete }: Props): JSX.El
   useEffect(() => {
     setTitle(selected?.title ?? '')
     setStudentText(selected?.students.join('\n') ?? '')
+    setNewAvoidA(0)
+    setNewAvoidB(Math.min(1, Math.max(0, (selected?.students.length ?? 2) - 1)))
   }, [selected])
 
   const createList = () => {
@@ -40,8 +46,26 @@ export default function StudentLists({ lists, onSave, onDelete }: Props): JSX.El
 
   const save = () => {
     if (!selected) return
-    onSave({ ...selected, title: title.trim() || '이름 없는 목록', students })
+    onSave({ ...selected, title: title.trim() || '이름 없는 목록', students, avoidPairs: selected?.avoidPairs ?? [] })
   }
+
+  const addAvoidPair = () => {
+    if (!selected) return
+    if (newAvoidA === newAvoidB) return
+    const a = Math.min(newAvoidA, newAvoidB)
+    const b = Math.max(newAvoidA, newAvoidB)
+    const current = selected.avoidPairs ?? []
+    if (current.some(([x, y]) => x === a && y === b)) return
+    onSave({ ...selected, avoidPairs: [...current, [a, b]] })
+  }
+
+  const removeAvoidPair = (i: number) => {
+    if (!selected) return
+    const current = selected.avoidPairs ?? []
+    onSave({ ...selected, avoidPairs: current.filter((_, j) => j !== i) })
+  }
+
+  const studentOptions = selected?.students.map((name, idx) => ({ name, idx })) ?? []
 
   return (
     <main className="student-lists-main">
@@ -78,6 +102,41 @@ export default function StudentLists({ lists, onSave, onDelete }: Props): JSX.El
                   : <p>왼쪽에 학생 이름을 입력하면 여기에 표시됩니다.</p>}
               </section>
             </div>
+
+            {students.length >= 2 && (
+              <div className="student-list-avoid">
+                <header>
+                  <div>
+                    <strong>기피 설정</strong>
+                    <p className="student-list-avoid-subtitle">같은 조, 같은 모둠에 배치되지 않도록 설정합니다.</p>
+                  </div>
+                  <span className="student-list-avoid-count">{(selected.avoidPairs ?? []).length}쌍</span>
+                </header>
+                <div className="student-list-avoid-add">
+                  <select value={newAvoidA} onChange={e => setNewAvoidA(Number(e.target.value))}>
+                    {studentOptions.map(({ name, idx }) => <option key={idx} value={idx}>{name}</option>)}
+                  </select>
+                  <span>×</span>
+                  <select value={newAvoidB} onChange={e => setNewAvoidB(Number(e.target.value))}>
+                    {studentOptions.map(({ name, idx }) => <option key={idx} value={idx}>{name}</option>)}
+                  </select>
+                  <button onClick={addAvoidPair} disabled={newAvoidA === newAvoidB}>추가</button>
+                </div>
+                {(selected.avoidPairs ?? []).length > 0
+                  ? <div className="student-list-avoid-list">
+                      {(selected.avoidPairs ?? []).map(([a, b], i) => (
+                        <div key={i} className="student-list-avoid-item">
+                          <span>{selected.students[a] ?? `#${a + 1}`}</span>
+                          <small>×</small>
+                          <span>{selected.students[b] ?? `#${b + 1}`}</span>
+                          <button onClick={() => removeAvoidPair(i)}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                  : <p className="student-list-avoid-empty">기피 설정이 없습니다.</p>}
+              </div>
+            )}
+
             <footer><span>{students.length}명의 학생을 저장합니다.</span><button onClick={save}>저장</button></footer>
           </> : (
             <div className="student-list-empty"><span>+</span><h2>학생 목록을 만들어보세요</h2><p>수업 중 사용할 학생 이름을 간편하게 보관할 수 있어요.</p><button onClick={createList}>새 목록 만들기</button></div>

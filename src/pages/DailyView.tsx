@@ -6,6 +6,7 @@ import { toLocalDate } from '../store/diary'
 import StickerPicker from '../components/StickerPicker'
 import CropModal, { CustomShape } from '../components/CropModal'
 import RandomStudentPicker from '../components/RandomStudentPicker'
+import GroupMaker from '../components/GroupMaker'
 import type { StudentList } from './StudentLists'
 import ReactMarkdown from 'react-markdown'
 import { toPng } from 'html-to-image'
@@ -643,6 +644,11 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
   const [randomPickerPosition, setRandomPickerPosition] = useState({ x: 120, y: 90 })
   const [randomPickerSize, setRandomPickerSize] = useState({ width: 620, height: 380 })
   const [randomPickerZ, setRandomPickerZ] = useState(10000)
+  const [showGroupMaker, setShowGroupMaker] = useState(false)
+  const [groupMakerSelected, setGroupMakerSelected] = useState(false)
+  const [groupMakerPosition, setGroupMakerPosition] = useState({ x: 160, y: 120 })
+  const [groupMakerSize, setGroupMakerSize] = useState({ width: 680, height: 420 })
+  const [groupMakerZ, setGroupMakerZ] = useState(10000)
   const [dockVisible, setDockVisible] = useState(true)
   const dockHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [showVideoUrlInput, setShowVideoUrlInput] = useState(false)
@@ -1462,6 +1468,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
     setSelectedId(null)
     setMultiIds([])
     setRandomPickerSelected(false)
+    setGroupMakerSelected(false)
     setShowStickers(false)
     const canvas = canvasRef.current!
     const rect = canvas.getBoundingClientRect()
@@ -1476,6 +1483,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
     if (e.button !== 0) return
     e.stopPropagation()
     setRandomPickerSelected(false)
+    setGroupMakerSelected(false)
     setShowStickers(false)
     if (e.shiftKey) {
       setMultiIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
@@ -1662,7 +1670,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
       onClick={e => {
         if (e.metaKey || e.ctrlKey) return
         if (justMarqueedRef.current) { justMarqueedRef.current = false; return }
-        setSelectedId(null); setMultiIds([]); setRandomPickerSelected(false); setEditingId(null); setShowStickers(false); setShowFontList(false); setShowFontSizeList(false); setShowVideoMenu(false); setShowClockMenu(false); setShowQrMenu(false); setShowBackgroundMenu(false)
+        setSelectedId(null); setMultiIds([]); setRandomPickerSelected(false); setGroupMakerSelected(false); setEditingId(null); setShowStickers(false); setShowFontList(false); setShowFontSizeList(false); setShowVideoMenu(false); setShowClockMenu(false); setShowQrMenu(false); setShowBackgroundMenu(false)
       }}>
 
       {/* SVG defs — clip paths */}
@@ -1831,6 +1839,12 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
           className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
           style={{ background: 'var(--color-primary)', color: '#fff', border: '1px solid var(--color-primary)' }}>
           발표 뽑기
+        </button>
+        <div className="w-px self-stretch mx-0.5" style={{ background: 'var(--color-border)' }} />
+        <button onClick={e => { e.stopPropagation(); setShowGroupMaker(true); setGroupMakerSelected(true); setSelectedId(null); setMultiIds([]); setShowStickers(false); setShowVideoMenu(false); setShowClockMenu(false); setShowQrMenu(false); setShowBackgroundMenu(false) }}
+          className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
+          style={{ background: 'var(--color-primary)', color: '#fff', border: '1px solid var(--color-primary)' }}>
+          조 만들기
         </button>
         <div className="w-px self-stretch mx-0.5" style={{ background: 'var(--color-border)' }} />
 
@@ -2642,6 +2656,23 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
         onSendBack={() => setRandomPickerZ(0)}
         onMoveForward={() => setRandomPickerZ(z => z + 1)}
         onMoveBack={() => setRandomPickerZ(z => Math.max(0, z - 1))}
+      />
+
+      <GroupMaker
+        lists={studentLists}
+        position={groupMakerPosition}
+        onPositionChange={setGroupMakerPosition}
+        size={groupMakerSize}
+        onSizeChange={setGroupMakerSize}
+        visible={showGroupMaker}
+        selected={groupMakerSelected}
+        onSelect={() => { setGroupMakerSelected(true); setSelectedId(null); setMultiIds([]) }}
+        onClose={() => { setShowGroupMaker(false); setGroupMakerSelected(false) }}
+        z={groupMakerZ}
+        onBringFront={() => setGroupMakerZ(maxZ + 1)}
+        onSendBack={() => setGroupMakerZ(0)}
+        onMoveForward={() => setGroupMakerZ(z => z + 1)}
+        onMoveBack={() => setGroupMakerZ(z => Math.max(0, z - 1))}
       />
 
       {exportPreview && (
