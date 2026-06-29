@@ -743,10 +743,11 @@ button, input, textarea {
   min-height: 170px;
   max-width: calc(100vw - 16px);
   max-height: calc(100vh - 16px);
-  border: 2px solid #5c63ee;
+  border: 2px solid transparent;
   background: #fff;
   box-shadow: 0 8px 25px rgba(28, 35, 55, .08);
 }
+.random-picker.selected { border-color: #5c63ee; }
 
 .classroom-widget { position: absolute; z-index: 150000; }
 .random-picker-toolbar {
@@ -754,20 +755,24 @@ button, input, textarea {
   left: 50%;
   bottom: calc(100% + 16px);
   transform: translateX(-50%);
-  padding: 8px 10px;
+  padding: 6px 8px;
   display: flex;
-  gap: 3px;
-  border: 1px solid #e5e8ec;
-  border-radius: 13px;
-  background: rgba(255,255,255,.98);
-  box-shadow: 0 5px 16px rgba(30, 38, 55, .16);
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 4px 20px rgba(0,0,0,.15);
   cursor: grab;
   touch-action: none;
 }
 .random-picker-toolbar:active { cursor: grabbing; }
-.random-picker-toolbar > button { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 8px; color: #65717d; background: transparent; cursor: pointer; }
-.random-picker-toolbar > button:hover, .random-picker-toolbar > button.active { color: #565ee8; background: #f0f1ff; }
-.random-picker-toolbar svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.random-picker-toolbar > button { width: 28px; height: 28px; padding: 0; display: grid; place-items: center; flex-shrink: 0; border: 1px solid var(--color-border); border-radius: 6px; color: var(--color-text-muted); background: transparent; cursor: pointer; }
+.random-picker-toolbar > button:hover { border-color: var(--color-primary); color: var(--color-primary-dark); background: var(--color-primary-light); }
+.random-picker-toolbar > button.active { border-color: var(--color-primary); color: #fff; background: var(--color-primary); }
+.random-picker-toolbar > button.danger { border-color: #fbbbd4; color: #e03060; }
+.random-picker-toolbar > button.danger:hover { border-color: #e03060; color: #fff; background: #e03060; }
+.random-picker-toolbar svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .random-picker-more { position: absolute; top: calc(100% + 7px); right: 0; width: 125px; padding: 5px; border: 1px solid #e5e8ec; border-radius: 10px; background: #fff; box-shadow: 0 8px 20px rgba(30,38,55,.14); }
 .random-picker-more button { width: 100%; padding: 8px; border: 0; border-radius: 7px; color: #596673; background: transparent; cursor: pointer; font-size: 10px; font-weight: 700; }
 .random-picker-more button:hover { background: #f3f4f7; }
@@ -781,7 +786,10 @@ button, input, textarea {
   place-items: center;
   overflow: hidden;
   background: #fff;
+  cursor: grab;
+  touch-action: none;
 }
+.random-picker-stage:active { cursor: grabbing; }
 
 .random-picker-stage-content {
   display: flex;

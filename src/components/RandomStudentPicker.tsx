@@ -9,6 +9,8 @@ interface Props {
   size: { width: number; height: number }
   onSizeChange: (size: { width: number; height: number }) => void
   visible: boolean
+  selected: boolean
+  onSelect: () => void
 }
 
 type ResizeCorner = 'nw' | 'ne' | 'sw' | 'se'
@@ -23,7 +25,7 @@ const Icon = ({ name }: { name: 'trash' | 'settings' | 'more' | 'shuffle' }): JS
   return <svg viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>
 }
 
-export default function RandomStudentPicker({ lists, onClose, position, onPositionChange, size, onSizeChange, visible }: Props): JSX.Element {
+export default function RandomStudentPicker({ lists, onClose, position, onPositionChange, size, onSizeChange, visible, selected, onSelect }: Props): JSX.Element {
   const availableLists = lists.filter(list => list.students.length > 0)
   const [listId, setListId] = useState(availableLists[0]?.id ?? '')
   const [excluded, setExcluded] = useState<number[]>([])
@@ -67,6 +69,13 @@ export default function RandomStudentPicker({ lists, onClose, position, onPositi
   }, [lists, listId])
 
   useEffect(() => () => timersRef.current.forEach(window.clearTimeout), [])
+
+  useEffect(() => {
+    if (!selected) {
+      setShowSettings(false)
+      setShowMore(false)
+    }
+  }, [selected])
 
   useEffect(() => {
     const move = (event: PointerEvent) => {
@@ -157,15 +166,27 @@ export default function RandomStudentPicker({ lists, onClose, position, onPositi
     resizeRef.current = { corner, sx: event.clientX, sy: event.clientY, x: position.x, y: position.y, width: size.width, height: size.height }
   }
 
+  const startDrag = (event: React.PointerEvent) => {
+    if (event.button !== 0) return
+    const target = event.target as HTMLElement
+    if (target.closest('button, input, select, label, .random-picker-toolbar, .random-picker-settings, .random-picker-resize')) return
+    event.preventDefault()
+    dragRef.current = { sx: event.clientX, sy: event.clientY, ox: position.x, oy: position.y }
+  }
+
   return (
     <section
       ref={widgetRef}
-      className="random-picker classroom-widget"
+      className={`random-picker classroom-widget ${selected ? 'selected' : ''}`}
       style={{ left: position.x, top: position.y, width: size.width, height: size.height, display: visible ? undefined : 'none' }}
       onClick={event => event.stopPropagation()}
-      onPointerDown={event => event.stopPropagation()}
+      onPointerDown={event => {
+        event.stopPropagation()
+        onSelect()
+        startDrag(event)
+      }}
     >
-      <div
+      {selected && <div
         className="random-picker-toolbar"
         onPointerDown={event => {
           if ((event.target as HTMLElement).closest('button')) return
@@ -173,15 +194,15 @@ export default function RandomStudentPicker({ lists, onClose, position, onPositi
           dragRef.current = { sx: event.clientX, sy: event.clientY, ox: position.x, oy: position.y }
         }}
       >
-        <button onClick={onClose} title="발표 위젯 닫기"><Icon name="trash" /></button>
+        <button className="danger" onClick={onClose} title="발표 위젯 닫기"><Icon name="trash" /></button>
         <button className={showSettings ? 'active' : ''} onClick={() => { setShowSettings(value => !value); setShowMore(false) }} title="설정"><Icon name="settings" /></button>
         <button className={showMore ? 'active' : ''} onClick={() => { setShowMore(value => !value); setShowSettings(false) }} title="더보기"><Icon name="more" /></button>
         {showMore && <div className="random-picker-more">
           <button onClick={() => { reset(); setShowMore(false) }} disabled={excluded.length === 0 && resultIndices.length === 0}>추첨 초기화</button>
         </div>}
-      </div>
+      </div>}
 
-      {showSettings && <aside className="random-picker-settings">
+      {selected && showSettings && <aside className="random-picker-settings">
         <header><strong>발표 뽑기 설정</strong><button onClick={() => setShowSettings(false)}>×</button></header>
         <label className="random-picker-list-select">학생 목록
           <select value={listId} onChange={event => setListId(event.target.value)}>
@@ -230,7 +251,7 @@ export default function RandomStudentPicker({ lists, onClose, position, onPositi
         </div>
       </div>
 
-      {(['nw', 'ne', 'sw', 'se'] as ResizeCorner[]).map(corner =>
+      {selected && (['nw', 'ne', 'sw', 'se'] as ResizeCorner[]).map(corner =>
         <button key={corner} className={`random-picker-resize ${corner}`} aria-label="위젯 크기 조절" onPointerDown={event => startResize(event, corner)} />,
       )}
     </section>

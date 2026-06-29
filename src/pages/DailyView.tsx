@@ -636,6 +636,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
   const [showClockMenu, setShowClockMenu] = useState(false)
   const [showBackgroundMenu, setShowBackgroundMenu] = useState(false)
   const [showRandomPicker, setShowRandomPicker] = useState(false)
+  const [randomPickerSelected, setRandomPickerSelected] = useState(false)
   const [randomPickerPosition, setRandomPickerPosition] = useState({ x: 120, y: 90 })
   const [randomPickerSize, setRandomPickerSize] = useState({ width: 620, height: 380 })
   const [dockVisible, setDockVisible] = useState(true)
@@ -1456,6 +1457,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
     if (e.metaKey || e.ctrlKey) return
     setSelectedId(null)
     setMultiIds([])
+    setRandomPickerSelected(false)
     setShowStickers(false)
     const canvas = canvasRef.current!
     const rect = canvas.getBoundingClientRect()
@@ -1469,6 +1471,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
   const startDrag = (e: React.PointerEvent, id: string) => {
     if (e.button !== 0) return
     e.stopPropagation()
+    setRandomPickerSelected(false)
     setShowStickers(false)
     if (e.shiftKey) {
       setMultiIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
@@ -1640,7 +1643,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
       onClick={e => {
         if (e.metaKey || e.ctrlKey) return
         if (justMarqueedRef.current) { justMarqueedRef.current = false; return }
-        setSelectedId(null); setMultiIds([]); setEditingId(null); setShowStickers(false); setShowFontList(false); setShowFontSizeList(false); setShowVideoMenu(false); setShowClockMenu(false); setShowBackgroundMenu(false)
+        setSelectedId(null); setMultiIds([]); setRandomPickerSelected(false); setEditingId(null); setShowStickers(false); setShowFontList(false); setShowFontSizeList(false); setShowVideoMenu(false); setShowClockMenu(false); setShowBackgroundMenu(false)
       }}>
 
       {/* SVG defs — clip paths */}
@@ -1770,7 +1773,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
           )}
         </div>
         <div className="w-px self-stretch mx-0.5" style={{ background: 'var(--color-border)' }} />
-        <button onClick={() => { setShowRandomPicker(true); setShowStickers(false); setShowVideoMenu(false); setShowClockMenu(false); setShowBackgroundMenu(false) }}
+        <button onClick={e => { e.stopPropagation(); setShowRandomPicker(true); setRandomPickerSelected(true); setSelectedId(null); setMultiIds([]); setShowStickers(false); setShowVideoMenu(false); setShowClockMenu(false); setShowBackgroundMenu(false) }}
           className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
           style={{ background: 'var(--color-primary)', color: '#fff', border: '1px solid var(--color-primary)' }}>
           발표 뽑기
@@ -2570,7 +2573,16 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
         size={randomPickerSize}
         onSizeChange={setRandomPickerSize}
         visible={showRandomPicker}
-        onClose={() => setShowRandomPicker(false)}
+        selected={randomPickerSelected}
+        onSelect={() => {
+          setRandomPickerSelected(true)
+          setSelectedId(null)
+          setMultiIds([])
+        }}
+        onClose={() => {
+          setShowRandomPicker(false)
+          setRandomPickerSelected(false)
+        }}
       />
 
       {exportPreview && (
