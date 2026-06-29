@@ -60,6 +60,22 @@ function PreviewElement({ element }: { element: CanvasEl }): JSX.Element {
     return <span className="preview-element preview-video" style={style}>▶</span>
   }
 
+  if (element.type === 'analogClock') {
+    return (
+      <span className="preview-element preview-clock preview-analog-clock" style={style}>
+        <span />
+      </span>
+    )
+  }
+
+  if (element.type === 'digitalClock') {
+    return (
+      <span className="preview-element preview-clock preview-digital-clock" style={style}>
+        12:34:56
+      </span>
+    )
+  }
+
   return (
     <span
       className="preview-element preview-text"

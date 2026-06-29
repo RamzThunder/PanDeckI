@@ -60,7 +60,7 @@ src-tauri/
 ```typescript
 export interface CanvasEl {
   id: string
-  type: 'text' | 'sticker' | 'photo' | 'video' | 'markdown'
+  type: 'text' | 'sticker' | 'photo' | 'video' | 'markdown' | 'analogClock' | 'digitalClock'
   x: number; y: number; w: number; h: number; z: number
   rotation: number       // 회전 각도 (deg)
   opacity: number        // 0-100
@@ -85,6 +85,12 @@ export interface CanvasEl {
 
   // 비디오 전용
   videoType?: 'embed' | 'local'   // embed: YouTube/Vimeo, local: 로컬 파일
+
+  // 시계 전용
+  clockFaceColor?: string    // 눈금/숫자/테두리 색 (기본 #ffffff)
+  clockHandColor?: string    // 시침/분침 + 중앙 원 색 (기본 #ffffff)
+  clockSecondColor?: string  // 초침 색 (기본 #ef4444)
+  clockBgColor?: string      // 배경색 ('transparent' = 없음)
 
   // 링크
   linkUrl?: string        // 더블클릭 시 열리는 URL
@@ -142,6 +148,7 @@ export interface DailyData {
 - **회전 스냅**: Shift 누른 채 핸들 회전 시 15° 단위로 스냅
 - **클립보드 붙여넣기**: Cmd+V로 이미지→사진요소, 텍스트→텍스트요소
 - **학생 목록/발표 뽑기**: 줄별 학생 목록을 저장하고 판 하단 도크에서 크기 조절 가능한 발표 위젯을 실행. 위젯 크기에 따라 내부 UI도 함께 확대/축소. 한 번에 뽑을 인원 설정, 뽑힌 학생 자동 제외/개별 복원, 당일 결석 학생 제외, 추첨 초기화 가능
+- **시계 위젯**: 아날로그(`analogClock`, 기본 210×210) + 디지털(`digitalClock`, 기본 260×92). 1초마다 실시간 갱신(`setInterval`). 아날로그는 비율 고정 리사이즈. 툴바에서 눈금/침/초침/배경색 4색 커스터마이즈 가능. 도크에 시계 추가 버튼(드롭다운) 제공
 - **테마**: 4 프리셋(하늘색·딸기핑크·흑백·다크, 기본=하늘색) + 5 커스텀 슬롯(삭제 가능), CSS 변수 기반 (`--color-primary` 등)
 - **앱 줌**: Cmd+스크롤 또는 설정 슬라이더 (50~150%), settings DB에 영속
 - **PNG 내보내기**: 캔버스를 PNG로 저장 (`save_png` 커맨드)

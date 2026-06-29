@@ -26,7 +26,7 @@ interface Props {
 
 export interface CanvasEl {
   id: string
-  type: 'text' | 'sticker' | 'photo' | 'video' | 'markdown'
+  type: 'text' | 'sticker' | 'photo' | 'video' | 'markdown' | 'analogClock' | 'digitalClock'
   videoType?: 'embed' | 'local'
   x: number; y: number; w: number; h: number; z: number
   rotation: number
@@ -52,6 +52,10 @@ export interface CanvasEl {
   locked?: boolean
   flipH?: boolean
   flipV?: boolean
+  clockFaceColor?: string    // 눈금/숫자/테두리
+  clockHandColor?: string    // 시침/분침 + 중앙 원
+  clockSecondColor?: string  // 초침
+  clockBgColor?: string      // 배경 ('transparent' = 없음)
 }
 
 export interface DailyData {
@@ -127,6 +131,69 @@ function isVideoUrl(url: string): boolean {
   return getVideoEmbedUrl(url) !== null
 }
 
+function pad2(value: number): string {
+  return value.toString().padStart(2, '0')
+}
+
+function AnalogClock({ time, el }: { time: Date; el: CanvasEl }): JSX.Element {
+  const seconds = time.getSeconds()
+  const minutes = time.getMinutes()
+  const hours = time.getHours() % 12
+  const secondDeg = seconds * 6
+  const minuteDeg = (minutes + seconds / 60) * 6
+  const hourDeg = (hours + minutes / 60) * 30
+  const marks = Array.from({ length: 60 }, (_, i) => i)
+  const nums = Array.from({ length: 12 }, (_, i) => {
+    const n = i + 1
+    const a = (n / 12) * Math.PI * 2 - Math.PI / 2
+    return { n, x: 50 + 38 * Math.cos(a), y: 50 + 38 * Math.sin(a) }
+  })
+
+  const faceC = el.clockFaceColor ?? '#ffffff'
+  const handC = el.clockHandColor ?? '#ffffff'
+  const secC  = el.clockSecondColor ?? '#ef4444'
+  const bgC   = el.clockBgColor ?? 'transparent'
+
+  return (
+    <div className="clock-widget analog-clock-widget">
+      <div className="analog-clock-face" style={{ borderColor: hexToRgba(faceC, 88), background: bgC }}>
+        {marks.map(i => (
+          <span key={i} className={`analog-clock-mark${i % 5 === 0 ? ' major' : ''}`}
+            style={{ transform: `rotate(${i * 6}deg)`, background: hexToRgba(faceC, i % 5 === 0 ? 75 : 45) }} />
+        ))}
+        {nums.map(({ n, x, y }) => (
+          <span key={n} className="analog-clock-number"
+            style={{ left: `${x}%`, top: `${y}%`, color: hexToRgba(faceC, 92) }}>{n}</span>
+        ))}
+        <span className="analog-clock-hand hour"
+          style={{ transform: `translateX(-50%) rotate(${hourDeg}deg)`, background: handC }} />
+        <span className="analog-clock-hand minute"
+          style={{ transform: `translateX(-50%) rotate(${minuteDeg}deg)`, background: handC }} />
+        <span className="analog-clock-hand second"
+          style={{ transform: `translateX(-50%) rotate(${secondDeg}deg)`, background: secC }} />
+        <span className="analog-clock-center" style={{ background: handC }} />
+      </div>
+    </div>
+  )
+}
+
+function DigitalClock({ time }: { time: Date }): JSX.Element {
+  const h = time.getHours()
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  const h12 = h % 12 || 12
+  return (
+    <div className="clock-widget digital-clock-widget">
+      <div className="digital-clock-body">
+        <span className="digital-clock-hm">{pad2(h12)}:{pad2(time.getMinutes())}</span>
+        <div className="digital-clock-side">
+          <span className="digital-clock-ampm">{ampm}</span>
+          <span className="digital-clock-s">{pad2(time.getSeconds())}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function makeEl(type: CanvasEl['type'], x: number, y: number, content: string, maxZ: number): CanvasEl {
   const base: CanvasEl = {
     id: crypto.randomUUID(), type, x, y, z: maxZ + 1, rotation: 0, opacity: 100,
@@ -139,6 +206,8 @@ function makeEl(type: CanvasEl['type'], x: number, y: number, content: string, m
   if (type === 'photo')   return { ...base, w: 180, h: 180 }
   if (type === 'video')    return { ...base, w: 480, h: 270 }
   if (type === 'markdown') return { ...base, w: 280, h: 160, bgOpacity: 80 }
+  if (type === 'analogClock') return { ...base, w: 210, h: 210, content: 'analog-clock', bgColor: '#ffffff', bgOpacity: 100, textRadius: 18 }
+  if (type === 'digitalClock') return { ...base, w: 260, h: 92, content: 'digital-clock', bgColor: '#ffffff', bgOpacity: 100, textRadius: 18 }
   return base
 }
 
@@ -564,6 +633,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showStickers, setShowStickers] = useState(false)
   const [showVideoMenu, setShowVideoMenu] = useState(false)
+  const [showClockMenu, setShowClockMenu] = useState(false)
   const [showBackgroundMenu, setShowBackgroundMenu] = useState(false)
   const [showRandomPicker, setShowRandomPicker] = useState(false)
   const [randomPickerPosition, setRandomPickerPosition] = useState({ x: 120, y: 90 })
@@ -601,6 +671,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
   const exportRef     = useRef<() => Promise<void>>(() => Promise.resolve())
   const [exportPreview, setExportPreview] = useState<{ dataUrl: string; filename: string } | null>(null)
   const [capturing, setCapturing] = useState<boolean | null>(null)
+  const [clockTime, setClockTime] = useState(() => new Date())
   const [youtubePort, setYoutubePort] = useState(0)
   const historyRef    = useRef<DailyData[]>([])
   const historyIdxRef = useRef(-1)
@@ -615,9 +686,9 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
   const scheduleDockHide = useCallback(() => {
     if (dockHideTimerRef.current) clearTimeout(dockHideTimerRef.current)
     dockHideTimerRef.current = setTimeout(() => {
-      if (!showStickers && !showVideoMenu && !showBackgroundMenu) setDockVisible(false)
+      if (!showStickers && !showVideoMenu && !showClockMenu && !showBackgroundMenu) setDockVisible(false)
     }, 1400)
-  }, [showStickers, showVideoMenu, showBackgroundMenu])
+  }, [showStickers, showVideoMenu, showClockMenu, showBackgroundMenu])
 
   useEffect(() => {
     scheduleDockHide()
@@ -627,8 +698,13 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
   }, [scheduleDockHide])
 
   useEffect(() => {
-    if (showStickers || showVideoMenu || showBackgroundMenu) showDock()
-  }, [showStickers, showVideoMenu, showBackgroundMenu, showDock])
+    if (showStickers || showVideoMenu || showClockMenu || showBackgroundMenu) showDock()
+  }, [showStickers, showVideoMenu, showClockMenu, showBackgroundMenu, showDock])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClockTime(new Date()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   useEffect(() => {
     api.video.getYoutubePort().then(setYoutubePort).catch(() => {})
@@ -1440,7 +1516,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
     e.stopPropagation(); e.preventDefault()
     const el = dataRef.current.elements.find(x => x.id === id)
     if (!el || el.locked) return
-    const lockAspect = el.type === 'photo' || el.type === 'sticker' || el.type === 'video'
+    const lockAspect = el.type === 'photo' || el.type === 'sticker' || el.type === 'video' || el.type === 'analogClock'
     opRef.current = { kind: 'resize', id, sx: e.clientX, sy: e.clientY, ow: el.w, oh: el.h, rot: el.rotation, cw: el.w, ch: el.h, lockAspect }
   }
 
@@ -1530,6 +1606,19 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
     setShowVideoMenu(false)
   }
 
+  const addClock = (type: 'analogClock' | 'digitalClock') => {
+    const c = canvasRef.current
+    const w = type === 'analogClock' ? 210 : 260
+    const h = type === 'analogClock' ? 210 : 92
+    const cx = c ? c.clientWidth / 2 - w / 2 : 100
+    const cy = c ? c.clientHeight / 2 - h / 2 : 100
+    const mz = dataRef.current.elements.reduce((m, el) => Math.max(m, el.z), 0)
+    const el = { ...makeEl(type, cx, cy, '', mz), w, h }
+    const next = { ...dataRef.current, elements: [...dataRef.current.elements, el] }
+    setData(next); persist(next); setSelectedId(el.id)
+    setShowClockMenu(false)
+  }
+
   const selectedEl = data.elements.find(el => el.id === selectedId) ?? null
   const filteredFonts = fontSearch
     ? systemFonts.filter(f => f.toLowerCase().includes(fontSearch.toLowerCase()))
@@ -1546,12 +1635,12 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
       onMouseMove={e => {
         const rect = e.currentTarget.getBoundingClientRect()
         if (rect.bottom - e.clientY <= 100) showDock()
-        else if (dockVisible && !showStickers && !showVideoMenu && !showBackgroundMenu) scheduleDockHide()
+        else if (dockVisible && !showStickers && !showVideoMenu && !showClockMenu && !showBackgroundMenu) scheduleDockHide()
       }}
       onClick={e => {
         if (e.metaKey || e.ctrlKey) return
         if (justMarqueedRef.current) { justMarqueedRef.current = false; return }
-        setSelectedId(null); setMultiIds([]); setEditingId(null); setShowStickers(false); setShowFontList(false); setShowFontSizeList(false); setShowVideoMenu(false); setShowBackgroundMenu(false)
+        setSelectedId(null); setMultiIds([]); setEditingId(null); setShowStickers(false); setShowFontList(false); setShowFontSizeList(false); setShowVideoMenu(false); setShowClockMenu(false); setShowBackgroundMenu(false)
       }}>
 
       {/* SVG defs — clip paths */}
@@ -1608,7 +1697,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
         <button onClick={addText} className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
           style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>텍스트</button>
         <div className="relative">
-          <button onClick={() => { setShowStickers(v => !v); setShowVideoMenu(false); setShowBackgroundMenu(false) }} className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
+          <button onClick={() => { setShowStickers(v => !v); setShowVideoMenu(false); setShowClockMenu(false); setShowBackgroundMenu(false) }} className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
             style={{ background: showStickers ? 'var(--color-primary)' : 'var(--color-primary-light)', color: showStickers ? '#fff' : 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>
             스티커
           </button>
@@ -1617,7 +1706,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
         <button onClick={addPhoto} className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
           style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>사진</button>
         <div className="relative">
-          <button onClick={() => { setShowVideoMenu(v => !v); setShowStickers(false); setShowBackgroundMenu(false); setShowVideoUrlInput(false); setVideoUrlInput('') }}
+          <button onClick={() => { setShowVideoMenu(v => !v); setShowStickers(false); setShowClockMenu(false); setShowBackgroundMenu(false); setShowVideoUrlInput(false); setVideoUrlInput('') }}
             className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
             style={{ background: showVideoMenu ? 'var(--color-primary)' : 'var(--color-primary-light)', color: showVideoMenu ? '#fff' : 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>
             동영상
@@ -1660,8 +1749,28 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
             </div>
           )}
         </div>
+        <div className="relative">
+          <button onClick={() => { setShowClockMenu(value => !value); setShowStickers(false); setShowVideoMenu(false); setShowBackgroundMenu(false) }}
+            className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
+            style={{ background: showClockMenu ? 'var(--color-primary)' : 'var(--color-primary-light)', color: showClockMenu ? '#fff' : 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>
+            시계
+          </button>
+          {showClockMenu && (
+            <div className="clock-add-menu absolute bottom-full left-0 mb-2 z-50"
+              onClick={e => e.stopPropagation()}>
+              <button onClick={() => addClock('analogClock')} className="clock-add-option">
+                <span className="clock-option-preview analog"><span /></span>
+                <strong>아날로그</strong>
+              </button>
+              <button onClick={() => addClock('digitalClock')} className="clock-add-option">
+                <span className="clock-option-preview digital">12:34:56</span>
+                <strong>디지털</strong>
+              </button>
+            </div>
+          )}
+        </div>
         <div className="w-px self-stretch mx-0.5" style={{ background: 'var(--color-border)' }} />
-        <button onClick={() => { setShowRandomPicker(true); setShowStickers(false); setShowVideoMenu(false); setShowBackgroundMenu(false) }}
+        <button onClick={() => { setShowRandomPicker(true); setShowStickers(false); setShowVideoMenu(false); setShowClockMenu(false); setShowBackgroundMenu(false) }}
           className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
           style={{ background: 'var(--color-primary)', color: '#fff', border: '1px solid var(--color-primary)' }}>
           발표 뽑기
@@ -1670,7 +1779,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
 
         {/* Canvas background */}
         <div className="relative">
-          <button onClick={() => { setShowBackgroundMenu(value => !value); setShowStickers(false); setShowVideoMenu(false) }}
+          <button onClick={() => { setShowBackgroundMenu(value => !value); setShowStickers(false); setShowVideoMenu(false); setShowClockMenu(false) }}
             className="text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80"
             style={{ background: showBackgroundMenu ? 'var(--color-primary)' : 'var(--color-primary-light)', color: showBackgroundMenu ? '#fff' : 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>
             배경
@@ -1958,6 +2067,10 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
                     style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 )}
 
+                {el.type === 'analogClock' && <AnalogClock time={clockTime} el={el} />}
+
+                {el.type === 'digitalClock' && <DigitalClock time={clockTime} />}
+
                 {interactiveUrl && el.type !== 'video' && <InteractiveOverlay url={interactiveUrl} cmdHeld={cmdHeld} />}
               </div>
 
@@ -2113,12 +2226,14 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
             ? canvasRef.current.offsetWidth / rect.width
             : 1  // ts = 1/appZoom
 
-          const TOOLBAR_H = selectedEl.type === 'text' ? 158 : 44
+          const TOOLBAR_H = selectedEl.type === 'text' ? 158 : selectedEl.type === 'analogClock' ? 92 : 44
           const TOOLBAR_W = selectedEl.type === 'text'
               ? (IS_WINDOWS ? 510 : 500)
               : selectedEl.type === 'photo'
                 ? (IS_WINDOWS ? 620 : 600)
-                : (IS_WINDOWS ? 420 : 410)
+                : selectedEl.type === 'analogClock'
+                  ? (IS_WINDOWS ? 440 : 430)
+                  : (IS_WINDOWS ? 420 : 410)
           const TOOLBAR_PAD_X = 8 * 2 + 2
           const TOOLBAR_PAD_Y = 6 * 2 + 2
           const toolbarOuterW = TOOLBAR_W + TOOLBAR_PAD_X
@@ -2339,6 +2454,45 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
                   {rowBtn(ICONS.formatPainter, '동일한 서식으로 텍스트 추가', cloneTextFormat)}
                 </div>
 
+                {hSep}
+              </>)}
+
+              {/* 아날로그 시계 색상 설정 행 */}
+              {selectedEl.type === 'analogClock' && (<>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'center', width: '100%' }}>
+                  <span style={{ fontSize: 10, color: 'var(--color-text-muted)', flexShrink: 0 }}>눈금/테두리</span>
+                  <input type="color"
+                    value={selectedEl.clockFaceColor ?? '#ffffff'}
+                    onChange={e => updateEl(selectedEl.id, { clockFaceColor: e.target.value })}
+                    style={{ width: 28, height: 28, padding: 2, border: '1px solid var(--color-border)', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }} />
+                  {vSep}
+                  <span style={{ fontSize: 10, color: 'var(--color-text-muted)', flexShrink: 0 }}>시/분침</span>
+                  <input type="color"
+                    value={selectedEl.clockHandColor ?? '#ffffff'}
+                    onChange={e => updateEl(selectedEl.id, { clockHandColor: e.target.value })}
+                    style={{ width: 28, height: 28, padding: 2, border: '1px solid var(--color-border)', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }} />
+                  {vSep}
+                  <span style={{ fontSize: 10, color: 'var(--color-text-muted)', flexShrink: 0 }}>초침</span>
+                  <input type="color"
+                    value={selectedEl.clockSecondColor ?? '#ef4444'}
+                    onChange={e => updateEl(selectedEl.id, { clockSecondColor: e.target.value })}
+                    style={{ width: 28, height: 28, padding: 2, border: '1px solid var(--color-border)', borderRadius: 4, cursor: 'pointer', flexShrink: 0 }} />
+                  {vSep}
+                  <span style={{ fontSize: 10, color: 'var(--color-text-muted)', flexShrink: 0 }}>배경</span>
+                  <input type="color"
+                    value={!selectedEl.clockBgColor || selectedEl.clockBgColor === 'transparent' ? '#ffffff' : selectedEl.clockBgColor}
+                    onChange={e => updateEl(selectedEl.id, { clockBgColor: e.target.value })}
+                    disabled={!selectedEl.clockBgColor || selectedEl.clockBgColor === 'transparent'}
+                    style={{ width: 28, height: 28, padding: 2, border: '1px solid var(--color-border)', borderRadius: 4, cursor: !selectedEl.clockBgColor || selectedEl.clockBgColor === 'transparent' ? 'default' : 'pointer', flexShrink: 0, opacity: !selectedEl.clockBgColor || selectedEl.clockBgColor === 'transparent' ? 0.3 : 1 }} />
+                  <button
+                    onClick={() => {
+                      const hasBg = !!selectedEl.clockBgColor && selectedEl.clockBgColor !== 'transparent'
+                      updateEl(selectedEl.id, { clockBgColor: hasBg ? 'transparent' : '#ffffff' })
+                    }}
+                    style={{ ...S, width: 36, fontSize: 9, border: `1px solid ${!selectedEl.clockBgColor || selectedEl.clockBgColor === 'transparent' ? 'var(--color-border)' : 'var(--color-primary)'}`, background: !selectedEl.clockBgColor || selectedEl.clockBgColor === 'transparent' ? 'transparent' : 'var(--color-primary-light)', color: !selectedEl.clockBgColor || selectedEl.clockBgColor === 'transparent' ? 'var(--color-text-muted)' : 'var(--color-primary-dark)' }}>
+                    {!selectedEl.clockBgColor || selectedEl.clockBgColor === 'transparent' ? '없음' : 'ON'}
+                  </button>
+                </div>
                 {hSep}
               </>)}
 
