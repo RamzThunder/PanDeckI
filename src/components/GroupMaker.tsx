@@ -1,6 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react'
 import type { StudentList } from '../pages/StudentLists'
 
+export interface GroupResult {
+  listId: string
+  groupCount: number
+  groups: number[][] | null
+  absent: number[]
+}
+
 interface Props {
   lists: StudentList[]
   position: { x: number; y: number }
@@ -12,10 +19,13 @@ interface Props {
   onSelect: () => void
   onClose: () => void
   z: number
+  maxZ: number
   onBringFront: () => void
   onSendBack: () => void
   onMoveForward: () => void
   onMoveBack: () => void
+  initialResult?: GroupResult
+  onResultChange?: (result: GroupResult) => void
 }
 
 type ResizeCorner = 'nw' | 'ne' | 'sw' | 'se'
@@ -55,18 +65,26 @@ function buildGroups(
   return best
 }
 
+const CANVAS_W = 1800
+const CANVAS_H = 1012
+
 export default function GroupMaker({
   lists, position, onPositionChange, size, onSizeChange,
-  visible, selected, onSelect, onClose, z,
+  visible, selected, onSelect, onClose, z, maxZ,
   onBringFront, onSendBack, onMoveForward, onMoveBack,
+  initialResult, onResultChange,
 }: Props): JSX.Element {
   const availableLists = lists.filter(list => list.students.length > 0)
-  const [listId, setListId] = useState(availableLists[0]?.id ?? '')
-  const [groupCount, setGroupCount] = useState(4)
-  const [groups, setGroups] = useState<number[][] | null>(null)
-  const [absent, setAbsent] = useState<number[]>([])
+  const [listId, setListId] = useState(initialResult?.listId ?? availableLists[0]?.id ?? '')
+  const [groupCount, setGroupCount] = useState(initialResult?.groupCount ?? 4)
+  const [groups, setGroups] = useState<number[][] | null>(initialResult?.groups ?? null)
+  const [absent, setAbsent] = useState<number[]>(initialResult?.absent ?? [])
   const [showSettings, setShowSettings] = useState(false)
+  const [rolling, setRolling] = useState(false)
+  const [rollingGroups, setRollingGroups] = useState<number[][] | null>(null)
+  const onResultChangeRef = useRef(onResultChange)
 
+  const timersRef = useRef<number[]>([])
   const widgetRef = useRef<HTMLElement>(null)
   const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null)
   const resizeRef = useRef<{ corner: ResizeCorner; sx: number; sy: number; x: number; y: number; width: number; height: number } | null>(null)
@@ -79,7 +97,6 @@ export default function GroupMaker({
 
   const avoidPairs: [number, number][] = selectedList?.avoidPairs ?? []
 
-  // Layout calculations
   const contentScale = Math.max(0.4, Math.min(2.2, Math.min(size.width / 620, size.height / 380)))
   const buttonAreaH = (58 + 32) * contentScale
   const textAreaH = size.height - buttonAreaH
@@ -103,18 +120,39 @@ export default function GroupMaker({
     (cardW - 8) / longestGroupNameLen,
   )))
 
+  const waitingFontSize = Math.max(20, Math.min(48, textAreaH * 0.25))
+  const rollingNameSize = Math.max(7, Math.floor(groupNameSize * 0.6))
+
+  // Settings panel position — flip if would go off canvas
+  const SETTINGS_W = 300
+  const SETTINGS_MAX_H = 480
+  const settingsStyle: React.CSSProperties = {
+    ...(position.x + size.width + 18 + SETTINGS_W > CANVAS_W
+      ? { left: 'auto', right: 'calc(100% + 18px)' }
+      : { left: 'calc(100% + 18px)' }),
+    top: Math.max(-position.y + 8, Math.min(-2, CANVAS_H - position.y - SETTINGS_MAX_H)),
+  }
+
   useEffect(() => {
     setGroups(null)
     setAbsent([])
+    timersRef.current.forEach(window.clearTimeout)
+    timersRef.current = []
+    setRolling(false)
+    setRollingGroups(null)
   }, [listId])
 
   useEffect(() => {
     if (!availableLists.some(list => list.id === listId)) setListId(availableLists[0]?.id ?? '')
   }, [lists, listId])
 
+  useEffect(() => { onResultChangeRef.current = onResultChange }, [onResultChange])
+
   useEffect(() => {
     if (!selected) setShowSettings(false)
   }, [selected])
+
+  useEffect(() => () => timersRef.current.forEach(window.clearTimeout), [])
 
   useEffect(() => {
     const move = (event: PointerEvent) => {
@@ -151,9 +189,32 @@ export default function GroupMaker({
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up) }
   }, [onPositionChange, onSizeChange, size.height, size.width])
 
+  const makeRandomGroups = () => {
+    const count = Math.min(groupCount, Math.max(1, activeStudents.length))
+    const shuffled = [...activeStudents].sort(() => Math.random() - 0.5)
+    const gs: number[][] = Array.from({ length: count }, () => [])
+    shuffled.forEach((s, i) => gs[i % count].push(s.index))
+    return gs
+  }
+
   const shuffleGroups = () => {
-    if (activeStudents.length === 0) return
-    setGroups(buildGroups(activeStudents, groupCount, avoidPairs))
+    if (activeStudents.length === 0 || rolling) return
+    setRolling(true)
+    setGroups(null)
+    timersRef.current.forEach(window.clearTimeout)
+    timersRef.current = []
+    const result = buildGroups(activeStudents, groupCount, avoidPairs)
+    for (let step = 0; step < 14; step++) {
+      timersRef.current.push(window.setTimeout(() => {
+        setRollingGroups(makeRandomGroups())
+      }, step * 70))
+    }
+    timersRef.current.push(window.setTimeout(() => {
+      setRollingGroups(null)
+      setGroups(result)
+      setRolling(false)
+      onResultChangeRef.current?.({ listId, groupCount, groups: result, absent })
+    }, 1050))
   }
 
   const toggleAbsent = (index: number) => {
@@ -174,11 +235,13 @@ export default function GroupMaker({
     dragRef.current = { sx: event.clientX, sy: event.clientY, ox: position.x, oy: position.y }
   }
 
+  const displayZ = selected ? Math.max(z, maxZ) + 1 : z
+
   return (
     <section
       ref={widgetRef}
       className={`random-picker classroom-widget ${selected ? 'selected' : ''}`}
-      style={{ left: position.x, top: position.y, width: size.width, height: size.height, zIndex: z, display: visible ? undefined : 'none' }}
+      style={{ left: position.x, top: position.y, width: size.width, height: size.height, zIndex: displayZ, display: visible ? undefined : 'none' }}
       onClick={e => e.stopPropagation()}
       onPointerDown={e => { e.stopPropagation(); onSelect(); startDrag(e) }}
     >
@@ -203,7 +266,7 @@ export default function GroupMaker({
 
       {/* Settings Panel */}
       {selected && showSettings && (
-        <aside className="random-picker-settings">
+        <aside className="random-picker-settings" style={settingsStyle}>
           <header>
             <strong>조 만들기 설정</strong>
             <button onClick={() => setShowSettings(false)}>×</button>
@@ -226,7 +289,6 @@ export default function GroupMaker({
             </span>
           </label>
 
-          {/* Attendance */}
           <div className="random-picker-students">
             {selectedList?.students.map((student, index) => (
               <label key={index}>
@@ -239,32 +301,32 @@ export default function GroupMaker({
       )}
 
       {/* Stage */}
-      <div className="random-picker-stage">
+      <div className={`random-picker-stage ${rolling ? 'drawing' : ''}`}>
         {availableLists.length === 0
           ? <div className="random-picker-empty"><h3>학생 목록이 필요해요</h3><p>학생 목록 메뉴에서 학생을 먼저 저장해주세요.</p></div>
           : <>
               <div className="random-picker-text-area">
-                {groups
+                {(rolling && rollingGroups) || groups
                   ? <div className="random-picker-groups"
                       style={{ gridTemplateColumns: `repeat(${cols}, 1fr)`, padding: CARD_PAD, gap: CARD_GAP }}>
-                      {groups.map((group, gi) => (
-                        <div key={gi} className="random-picker-group-card">
-                          <div className="random-picker-group-header" style={{ fontSize: Math.max(9, groupNameSize * 0.7) }}>
+                      {(rollingGroups ?? groups)!.map((group, gi) => (
+                        <div key={gi} className={`random-picker-group-card ${rolling ? 'rolling' : ''}`}>
+                          <div className="random-picker-group-header" style={{ fontSize: Math.max(9, (rolling ? rollingNameSize : groupNameSize) * 0.7) }}>
                             {gi + 1}조
                           </div>
                           {group.map(idx => (
-                            <div key={idx} className="random-picker-group-name" style={{ fontSize: groupNameSize }}>
+                            <div key={idx} className="random-picker-group-name" style={{ fontSize: rolling ? rollingNameSize : groupNameSize }}>
                               {selectedList?.students[idx] ?? ''}
                             </div>
                           ))}
                         </div>
                       ))}
                     </div>
-                  : <strong className="waiting" style={{ fontSize: 24 }}>•••</strong>}
+                  : <strong className="waiting" style={{ fontSize: waitingFontSize }}>•••</strong>}
               </div>
 
               <div className="random-picker-button-area" style={{ transform: `scale(${contentScale})` }}>
-                <button className="random-picker-draw" onClick={shuffleGroups} disabled={activeStudents.length === 0}
+                <button className="random-picker-draw" onClick={shuffleGroups} disabled={activeStudents.length === 0 || rolling}
                   aria-label="조 섞기" title="조 섞기">
                   <Icon name="shuffle" />
                 </button>

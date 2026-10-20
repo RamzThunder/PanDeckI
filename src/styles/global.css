@@ -755,6 +755,7 @@ button, input, textarea {
   left: 50%;
   bottom: calc(100% + 16px);
   transform: translateX(-50%);
+  z-index: 2147483647;
   padding: 6px 8px;
   display: flex;
   align-items: center;
@@ -836,7 +837,7 @@ button, input, textarea {
 .random-picker-resize.sw { left: -10px; bottom: -10px; cursor: nesw-resize; }
 .random-picker-resize.se { right: -10px; bottom: -10px; cursor: nwse-resize; }
 
-.random-picker-settings { position: absolute; left: calc(100% + 18px); top: -2px; width: 300px; max-height: min(620px, calc(100vh - 24px)); padding: 15px; overflow-y: auto; border: 1px solid #e4e8ed; border-radius: 14px; background: #fff; box-shadow: 0 14px 35px rgba(25,34,50,.18); }
+.random-picker-settings { position: absolute; width: 300px; max-height: min(620px, calc(100vh - 24px)); padding: 15px; overflow-y: auto; border: 1px solid #e4e8ed; border-radius: 14px; background: #fff; box-shadow: 0 14px 35px rgba(25,34,50,.18); }
 .random-picker-settings > header { margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; color: #273342; }
 .random-picker-settings > header strong { font-size: 13px; }
 .random-picker-settings > header button { border: 0; color: #87929d; background: transparent; cursor: pointer; font-size: 18px; }
@@ -874,7 +875,8 @@ button, input, textarea {
 
 /* Groups display */
 .random-picker-groups { flex: 1; width: 100%; display: grid; box-sizing: border-box; overflow: hidden; }
-.random-picker-group-card { display: flex; flex-direction: column; align-items: center; border: 1.5px solid #e8eaff; border-radius: 10px; background: #f8f8ff; overflow: hidden; }
+.random-picker-group-card { display: flex; flex-direction: column; align-items: center; border: 1.5px solid #e8eaff; border-radius: 10px; background: #f8f8ff; overflow: hidden; transition: opacity .06s; }
+.random-picker-group-card.rolling { opacity: 0.7; }
 .random-picker-group-header { width: 100%; padding: 4px 0; text-align: center; font-weight: 800; color: #5c63ee; background: #ededff; letter-spacing: 1px; }
 .random-picker-group-name { width: 100%; padding: 1px 6px; text-align: center; color: #1a2236; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 

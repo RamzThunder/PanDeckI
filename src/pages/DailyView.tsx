@@ -28,7 +28,7 @@ interface Props {
 
 export interface CanvasEl {
   id: string
-  type: 'text' | 'sticker' | 'photo' | 'video' | 'markdown' | 'analogClock' | 'digitalClock'
+  type: 'text' | 'sticker' | 'photo' | 'video' | 'markdown' | 'analogClock' | 'digitalClock' | 'qr'
   videoType?: 'embed' | 'local'
   x: number; y: number; w: number; h: number; z: number
   rotation: number
@@ -58,6 +58,8 @@ export interface CanvasEl {
   clockHandColor?: string    // 시침/분침 + 중앙 원
   clockSecondColor?: string  // 초침
   clockBgColor?: string      // 배경 ('transparent' = 없음)
+  qrUrl?: string
+  qrTitle?: string
 }
 
 export interface DailyData {
@@ -210,6 +212,7 @@ function makeEl(type: CanvasEl['type'], x: number, y: number, content: string, m
   if (type === 'markdown') return { ...base, w: 280, h: 160, bgOpacity: 80 }
   if (type === 'analogClock') return { ...base, w: 210, h: 210, content: 'analog-clock', bgColor: '#ffffff', bgOpacity: 100, textRadius: 18 }
   if (type === 'digitalClock') return { ...base, w: 260, h: 92, content: 'digital-clock', bgColor: '#ffffff', bgOpacity: 100, textRadius: 18 }
+  if (type === 'qr') return { ...base, w: 240, h: 240 }
   return base
 }
 
@@ -638,12 +641,18 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
   const [showClockMenu, setShowClockMenu] = useState(false)
   const [showQrMenu, setShowQrMenu] = useState(false)
   const [qrInput, setQrInput] = useState('')
+  const [qrTitleInput, setQrTitleInput] = useState('')
+  const [qrEditId, setQrEditId] = useState<string | null>(null)
+  const [qrEditUrl, setQrEditUrl] = useState('')
+  const [qrEditTitle, setQrEditTitle] = useState('')
   const [showBackgroundMenu, setShowBackgroundMenu] = useState(false)
   const [showRandomPicker, setShowRandomPicker] = useState(false)
   const [randomPickerSelected, setRandomPickerSelected] = useState(false)
   const [randomPickerPosition, setRandomPickerPosition] = useState({ x: 120, y: 90 })
   const [randomPickerSize, setRandomPickerSize] = useState({ width: 620, height: 380 })
   const [randomPickerZ, setRandomPickerZ] = useState(10000)
+  const [pickerInitResult, setPickerInitResult] = useState<import('../components/RandomStudentPicker').PickerResult | undefined>(undefined)
+  const [groupInitResult, setGroupInitResult] = useState<import('../components/GroupMaker').GroupResult | undefined>(undefined)
   const [showGroupMaker, setShowGroupMaker] = useState(false)
   const [groupMakerSelected, setGroupMakerSelected] = useState(false)
   const [groupMakerPosition, setGroupMakerPosition] = useState({ x: 160, y: 120 })
@@ -732,6 +741,29 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
       historyIdxRef.current = 0
     }).catch(() => { setData(DEFAULT_DATA) })
     setSelectedId(null); setMultiIds([]); setEditingId(null)
+    // Load widget state for this date
+    setPickerInitResult(undefined)
+    setGroupInitResult(undefined)
+    setShowRandomPicker(false)
+    setShowGroupMaker(false)
+    api.settings.get(`pickerWidget_${dateStr}`).then(raw => {
+      if (!raw) return
+      const s = JSON.parse(raw)
+      setPickerInitResult(s)
+      setShowRandomPicker(true)
+      if (s.position) setRandomPickerPosition(s.position)
+      if (s.size) setRandomPickerSize(s.size)
+      if (s.z) setRandomPickerZ(s.z)
+    }).catch(() => {})
+    api.settings.get(`groupWidget_${dateStr}`).then(raw => {
+      if (!raw) return
+      const s = JSON.parse(raw)
+      setGroupInitResult(s)
+      setShowGroupMaker(true)
+      if (s.position) setGroupMakerPosition(s.position)
+      if (s.size) setGroupMakerSize(s.size)
+      if (s.z) setGroupMakerZ(s.z)
+    }).catch(() => {})
   }, [dateStr])
 
   // Load global settings
@@ -1634,19 +1666,37 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
     setShowClockMenu(false)
   }
 
-  const addQrCode = async (url: string) => {
+  const addQrCode = async (url: string, title: string) => {
     const trimmed = url.trim()
     if (!trimmed) return
     const dataUrl = await QRCode.toDataURL(trimmed, { width: 400, margin: 1, color: { dark: '#000000', light: '#ffffff' } })
     const c = canvasRef.current
-    const size = 400
-    const cx = c ? c.clientWidth / 2 - size / 2 : 100
-    const cy = c ? c.clientHeight / 2 - size / 2 : 100
+    const w = 240
+    const titleH = title.trim() ? 48 : 0
+    const h = w + titleH
+    const cx = c ? c.clientWidth / 2 - w / 2 : 100
+    const cy = c ? c.clientHeight / 2 - h / 2 : 100
     const mz = dataRef.current.elements.reduce((m, el) => Math.max(m, el.z), 0)
-    const el: CanvasEl = { ...makeEl('photo', cx, cy, dataUrl, mz), w: size, h: size, linkUrl: trimmed }
+    const el: CanvasEl = { ...makeEl('qr', cx, cy, dataUrl, mz), w, h, linkUrl: trimmed, qrUrl: trimmed, qrTitle: title.trim() || undefined }
     const next = { ...dataRef.current, elements: [...dataRef.current.elements, el] }
     setData(next); persist(next); setSelectedId(el.id)
-    setShowQrMenu(false); setQrInput('')
+    setShowQrMenu(false); setQrInput(''); setQrTitleInput('')
+  }
+
+  const updateQrCode = async () => {
+    if (!qrEditId) return
+    const url = qrEditUrl.trim()
+    if (!url) return
+    const dataUrl = await QRCode.toDataURL(url, { width: 400, margin: 1, color: { dark: '#000000', light: '#ffffff' } })
+    const titleH = qrEditTitle.trim() ? 48 : 0
+    const next = {
+      ...dataRef.current,
+      elements: dataRef.current.elements.map(el => el.id === qrEditId
+        ? { ...el, content: dataUrl, linkUrl: url, qrUrl: url, qrTitle: qrEditTitle.trim() || undefined, h: el.w + titleH }
+        : el
+      ),
+    }
+    setData(next); persist(next); setQrEditId(null)
   }
 
   const selectedEl = data.elements.find(el => el.id === selectedId) ?? null
@@ -1817,16 +1867,26 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
                 <button onClick={() => setShowQrMenu(false)} style={{ border: 0, background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: 16 }}>×</button>
               </div>
               <p className="text-xs mb-2" style={{ color: 'var(--color-text-muted)' }}>URL을 입력하면 QR 코드를 캔버스에 추가해요</p>
+              <label style={{ fontSize: 10, color: 'var(--color-text-muted)', display: 'block', marginBottom: 3 }}>URL</label>
               <input
                 type="text"
                 value={qrInput}
                 onChange={e => setQrInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') addQrCode(qrInput) }}
+                onKeyDown={e => { if (e.key === 'Enter') addQrCode(qrInput, qrTitleInput) }}
                 placeholder="https://..."
                 autoFocus
+                style={{ width: '100%', padding: '6px 8px', fontSize: 11, border: '1px solid var(--color-border)', borderRadius: 8, outline: 'none', boxSizing: 'border-box', marginBottom: 6 }}
+              />
+              <label style={{ fontSize: 10, color: 'var(--color-text-muted)', display: 'block', marginBottom: 3 }}>타이틀 <span style={{ opacity: 0.6 }}>(선택)</span></label>
+              <input
+                type="text"
+                value={qrTitleInput}
+                onChange={e => setQrTitleInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') addQrCode(qrInput, qrTitleInput) }}
+                placeholder="예: 출석 체크"
                 style={{ width: '100%', padding: '6px 8px', fontSize: 11, border: '1px solid var(--color-border)', borderRadius: 8, outline: 'none', boxSizing: 'border-box', marginBottom: 8 }}
               />
-              <button onClick={() => addQrCode(qrInput)}
+              <button onClick={() => addQrCode(qrInput, qrTitleInput)}
                 className="w-full text-xs py-1.5 rounded-full font-medium"
                 style={{ background: 'var(--color-primary)', color: '#fff', border: 'none', cursor: 'pointer' }}>
                 캔버스에 추가
@@ -2006,6 +2066,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
                   }
                 }
                 if (el.type === 'markdown') { setSelectedId(el.id); setEditingId(el.id) }
+                if (el.type === 'qr') { setQrEditId(el.id); setQrEditUrl(el.qrUrl ?? ''); setQrEditTitle(el.qrTitle ?? '') }
               }}
               onClick={e => e.stopPropagation()}>
 
@@ -2013,9 +2074,10 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
                 width: '100%', height: '100%', opacity: el.opacity / 100,
                 position: 'relative',
                 ...clipStyle,
-                overflow: (el.type === 'photo' || (el.type === 'text' && textRad > 0) || el.type === 'markdown') ? 'hidden' : undefined,
+                overflow: (el.type === 'photo' || el.type === 'qr' || (el.type === 'text' && textRad > 0) || el.type === 'markdown') ? 'hidden' : undefined,
                 borderRadius: el.type === 'photo'
                   ? (el.clipShape === 'none' ? `${photoRadiusPx(el.w, el.h, el.photoRadius)}px` : 0)
+                  : el.type === 'qr' ? 10
                   : (el.type === 'text' || el.type === 'markdown') ? `${textRad}px` : 0,
               }}>
                 {el.type === 'text' && (
@@ -2138,6 +2200,19 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
                     style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 )}
 
+                {el.type === 'qr' && (
+                  <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 10, overflow: 'hidden' }}>
+                    <div style={{ flex: 1, padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 0 }}>
+                      <img src={el.content} alt="QR" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+                    </div>
+                    {el.qrTitle && (
+                      <div style={{ padding: '5px 10px 7px', textAlign: 'center', fontSize: Math.max(11, Math.min(16, el.w * 0.065)), fontWeight: 700, color: '#1a2236', background: '#f5f7ff', borderTop: '1px solid #e8eaff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 0 }}>
+                        {el.qrTitle}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {el.type === 'analogClock' && <AnalogClock time={clockTime} el={el} />}
 
                 {el.type === 'digitalClock' && <DigitalClock time={clockTime} />}
@@ -2154,6 +2229,39 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
             </div>
           )
         })}
+
+        {/* QR Edit popup */}
+        {qrEditId && (() => {
+          const qrEl = data.elements.find(e => e.id === qrEditId)
+          if (!qrEl) return null
+          const POPUP_W = 280
+          const left = qrEl.x + qrEl.w + 14 + POPUP_W > 1800 ? qrEl.x - POPUP_W - 14 : qrEl.x + qrEl.w + 14
+          const top = Math.min(qrEl.y, 1012 - 220)
+          return (
+            <div style={{ position: 'absolute', left, top, width: POPUP_W, padding: 14, background: 'rgba(255,255,255,0.97)', border: '1px solid var(--color-border)', borderRadius: 14, boxShadow: '0 14px 35px rgba(25,34,50,.18)', zIndex: 2147483647 }}
+              onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <strong style={{ fontSize: 12, color: 'var(--color-text)' }}>QR 코드 편집</strong>
+                <button onClick={() => setQrEditId(null)} style={{ border: 0, background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: 16 }}>×</button>
+              </div>
+              <label style={{ fontSize: 11, color: 'var(--color-text-muted)', display: 'block', marginBottom: 4 }}>URL</label>
+              <input type="text" value={qrEditUrl} onChange={e => setQrEditUrl(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') updateQrCode() }}
+                placeholder="https://..."
+                autoFocus
+                style={{ width: '100%', padding: '6px 8px', fontSize: 11, border: '1px solid var(--color-border)', borderRadius: 8, outline: 'none', boxSizing: 'border-box', marginBottom: 8 }} />
+              <label style={{ fontSize: 11, color: 'var(--color-text-muted)', display: 'block', marginBottom: 4 }}>타이틀 <span style={{ opacity: 0.6 }}>(선택)</span></label>
+              <input type="text" value={qrEditTitle} onChange={e => setQrEditTitle(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') updateQrCode() }}
+                placeholder="예: 출석 체크"
+                style={{ width: '100%', padding: '6px 8px', fontSize: 11, border: '1px solid var(--color-border)', borderRadius: 8, outline: 'none', boxSizing: 'border-box', marginBottom: 10 }} />
+              <button onClick={updateQrCode}
+                style={{ width: '100%', padding: '7px 0', fontSize: 11, fontWeight: 700, border: 'none', borderRadius: 8, cursor: 'pointer', background: 'var(--color-primary)', color: '#fff' }}>
+                적용
+              </button>
+            </div>
+          )
+        })()}
 
         {/* Marquee selection overlay */}
         {capturing === null && marqueeRect && (
@@ -2652,10 +2760,13 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
           setRandomPickerSelected(false)
         }}
         z={randomPickerZ}
+        maxZ={maxZ}
         onBringFront={() => setRandomPickerZ(maxZ + 1)}
         onSendBack={() => setRandomPickerZ(0)}
         onMoveForward={() => setRandomPickerZ(z => z + 1)}
         onMoveBack={() => setRandomPickerZ(z => Math.max(0, z - 1))}
+        initialResult={pickerInitResult}
+        onResultChange={result => api.settings.set(`pickerWidget_${dateStr}`, JSON.stringify({ ...result, position: randomPickerPosition, size: randomPickerSize, z: randomPickerZ }))}
       />
 
       <GroupMaker
@@ -2669,10 +2780,13 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
         onSelect={() => { setGroupMakerSelected(true); setSelectedId(null); setMultiIds([]) }}
         onClose={() => { setShowGroupMaker(false); setGroupMakerSelected(false) }}
         z={groupMakerZ}
+        maxZ={maxZ}
         onBringFront={() => setGroupMakerZ(maxZ + 1)}
         onSendBack={() => setGroupMakerZ(0)}
         onMoveForward={() => setGroupMakerZ(z => z + 1)}
         onMoveBack={() => setGroupMakerZ(z => Math.max(0, z - 1))}
+        initialResult={groupInitResult}
+        onResultChange={result => api.settings.set(`groupWidget_${dateStr}`, JSON.stringify({ ...result, position: groupMakerPosition, size: groupMakerSize, z: groupMakerZ }))}
       />
 
       {exportPreview && (
