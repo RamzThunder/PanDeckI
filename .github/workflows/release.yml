@@ -159,14 +159,14 @@ jobs:
 
       - name: Create release and upload
         env:
-          RELEASES_PAT: ${{ secrets.RELEASES_PAT }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
           TAG="${{ github.ref_name }}"
           VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          BASE_URL="https://github.com/RamzThunder/dida-releases/releases/download/${TAG}"
+          BASE_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}"
 
           MAC_TAR="${{ needs.build-macos.outputs.tar_name }}"
           MAC_SIG="${{ needs.build-macos.outputs.tar_sig }}"
@@ -178,7 +178,7 @@ jobs:
 
           jq -n \
             --arg version "$VERSION" \
-            --arg notes "dida 새 버전이 업데이트되었습니다." \
+            --arg notes "PanDeckI 새 버전이 업데이트되었습니다." \
             --arg pub_date "$DATE" \
             --arg mac_sig "$MAC_SIG" \
             --arg mac_url "${BASE_URL}/${MAC_TAR}" \
@@ -192,15 +192,15 @@ jobs:
           echo "=== latest.json ==="
           cat latest.json
 
-          GH_TOKEN="${RELEASES_PAT}" gh release delete "$TAG" \
-            --repo RamzThunder/dida-releases --yes 2>/dev/null || true
+          gh release delete "$TAG" \
+            --repo "${{ github.repository }}" --yes 2>/dev/null || true
 
-          GH_TOKEN="${RELEASES_PAT}" gh release create "$TAG" \
+          gh release create "$TAG" \
             artifacts/macos/*.dmg \
             artifacts/macos/*.app.tar.gz \
             artifacts/macos/*.app.tar.gz.sig \
             artifacts/windows/* \
             latest.json \
-            --repo RamzThunder/dida-releases \
-            --title "dida $TAG" \
-            --notes "dida 새 버전이 출시되었습니다."
+            --repo "${{ github.repository }}" \
+            --title "PanDeckI $TAG" \
+            --notes "PanDeckI 새 버전이 출시되었습니다."

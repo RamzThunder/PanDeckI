@@ -256,6 +256,8 @@ open_url
 
 ## 자동 업데이트 (Auto-Update)
 - **방식**: GitHub Releases + `tauri-plugin-updater` (서명 키 기반, Apple 개발자 계정 불필요)
+- **릴리즈 저장소**: PanDeckI 저장소 자체(공개). 워크플로우는 기본 `GITHUB_TOKEN`으로 릴리즈 생성 — PAT 불필요. 예전 dida 앱의 `dida-releases`와 섞이면 안 됨
+- **자동 확인**: 앱 시작 3초 후 `UpdateNotice`(`src/components/UpdateNotice.tsx`)가 `check()` → 우측 하단 알림(업데이트/나중에, 다운로드 진행률). dev 모드에서는 건너뜀. 설정 → 정보의 수동 버튼도 유지
 - **서명 키**: `~/.tauri/dida.key` (로컬), 공개키는 `tauri.conf.json`에 포함
 - **GitHub Secret**: `TAURI_SIGNING_PRIVATE_KEY` (비밀번호 없음)
 - **릴리즈 방법**: 버전 태그 푸쉬 → GitHub Actions 자동 빌드 (macOS aarch64 + Windows x86_64 병렬)

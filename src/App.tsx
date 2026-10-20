@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import DailyView from './pages/DailyView'
 import AppSidebar from './components/AppSidebar'
 import SettingsPanel from './components/SettingsPanel'
+import UpdateNotice from './components/UpdateNotice'
 import Dashboard, { BoardInfo } from './pages/Dashboard'
 import StudentLists, { StudentList } from './pages/StudentLists'
 import { api } from './api'
@@ -259,6 +260,7 @@ export default function App(): JSX.Element {
         )}
       </section>
       {settingsOpen && <SettingsPanel activeThemeId={activeThemeId} onThemeChange={id => { setActiveThemeId(id); saveSetting('active_theme', id) }} appZoom={appZoom} onZoomChange={changeZoom} onZoomCommit={commitZoom} globalFont={globalFont} onGlobalFontChange={value => { setGlobalFont(value); applyGlobalFont(value); saveSetting('globalFont', value) }} systemFonts={systemFonts} fontScale={fontScale} onFontScaleChange={value => { setFontScale(value); saveSetting('fontScale', String(value)) }} fontOffsetY={fontOffsetY} onFontOffsetYChange={value => { setFontOffsetY(value); saveSetting('fontOffsetY', String(value)) }} diaryName={diaryName} onDiaryNameChange={value => { setDiaryName(value); saveSetting('diaryName', value) }} onClose={() => setSettingsOpen(false)} />}
+      <UpdateNotice />
     </div>
   )
 }
