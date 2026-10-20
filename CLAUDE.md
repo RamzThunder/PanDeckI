@@ -270,7 +270,7 @@ open_url
 - **워크플로우 구조**: `build-macos` + `build-windows` 병렬 → `release` job에서 합쳐 latest.json 생성
 - **latest.json 플랫폼**: `darwin-aarch64`, `windows-x86_64`
 - **Windows 아티팩트**: NSIS `.exe` (설치파일) + `.nsis.zip` + `.nsis.zip.sig` (업데이터)
-- **macOS 최초 실행**: 우클릭 → 열기 (또는 `xattr -dr com.apple.quarantine "/Applications/PanDeckI.app"`)
+- **macOS 최초 실행**: 앱 번들은 ad-hoc 서명(`signingIdentity: "-"`). 브라우저로 받은 DMG는 격리 속성 때문에 경고 → DMG 안 `설치 방법.txt` 안내(그래도 열기 / `xattr -dr com.apple.quarantine /Applications/PanDeckI.app`). 가장 쉬운 설치: `curl -fsSL https://raw.githubusercontent.com/RamzThunder/PanDeckI/main/scripts/install-mac.sh | bash` (curl 다운로드는 격리 속성이 안 붙음). `.command` 스크립트는 그 자체가 격리돼 실행 불가라 제거함
 - **워크플로우**: `.github/workflows/release.yml`
 
 ## 크로스 플랫폼 구현 (macOS vs Windows)

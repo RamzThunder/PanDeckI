@@ -46,17 +46,16 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
 
-      - name: Inject .command file into DMG
+      - name: Add install guide to DMG
         run: |
           DMG=$(find src-tauri/target/aarch64-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
           echo "Found DMG: $DMG"
-          hdiutil convert "$DMG" -format UDRW -o /tmp/dida_rw.dmg
-          hdiutil attach /tmp/dida_rw.dmg -mountpoint /tmp/dida_mount -nobrowse -quiet
-          cp "scripts/실행_오류_해결.command" "/tmp/dida_mount/실행_오류_해결.command"
-          chmod +x "/tmp/dida_mount/실행_오류_해결.command"
-          hdiutil detach /tmp/dida_mount -quiet
-          hdiutil convert /tmp/dida_rw.dmg -format UDZO -imagekey zlib-level=9 -o /tmp/dida_final.dmg
-          mv /tmp/dida_final.dmg "$DMG"
+          hdiutil convert "$DMG" -format UDRW -o /tmp/pandecki_rw.dmg
+          hdiutil attach /tmp/pandecki_rw.dmg -mountpoint /tmp/pandecki_mount -nobrowse -quiet
+          cp "scripts/설치 방법.txt" "/tmp/pandecki_mount/설치 방법.txt"
+          hdiutil detach /tmp/pandecki_mount -quiet
+          hdiutil convert /tmp/pandecki_rw.dmg -format UDZO -imagekey zlib-level=9 -o /tmp/pandecki_final.dmg
+          mv /tmp/pandecki_final.dmg "$DMG"
 
       - id: info
         run: |
