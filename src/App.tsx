@@ -1,3 +1,4 @@
+import { BoardScope, publish, setPresentationActive, startPublisher } from './presentation/sync'
 import React, { useEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import DailyView from './pages/DailyView'
@@ -45,12 +46,67 @@ export default function App(): JSX.Element {
   const fullscreenRef = useRef(isFullscreen)
   fullscreenRef.current = isFullscreen
 
-  const toggleFullscreen = () => {
-    const next = !fullscreenRef.current
-    fullscreenRef.current = next
-    setIsFullscreen(next)
-    invoke('set_fullscreen', { fullscreen: next }).catch(() => {})
+  const [presenting, setPresenting] = useState(false)
+  const [presentationError, setPresentationError] = useState('')
+  const presentingRef = useRef(false)
+  const toggleBusy = useRef(false)
+  const toggleFullscreen = async () => {
+    if (toggleBusy.current) return
+    toggleBusy.current = true
+    setPresentationError('')
+    try {
+      if (presentingRef.current) {
+        await invoke('stop_presentation')
+        presentingRef.current = false
+        setPresenting(false)
+        setPresentationActive(false)
+      } else if (!fullscreenRef.current && await invoke<boolean>('start_presentation')) {
+        presentingRef.current = true
+        setPresenting(true)
+      } else {
+        const next = !fullscreenRef.current
+        await invoke('set_fullscreen', { fullscreen: next })
+        fullscreenRef.current = next
+        setIsFullscreen(next)
+      }
+    } catch (error) {
+      if (!presentingRef.current) setPresentationActive(false)
+      setPresentationError(`화면 전환에 실패했습니다: ${String(error)}`)
+    } finally { toggleBusy.current = false }
   }
+
+  useEffect(() => {
+    let disposed = false
+    let cleanup: (() => void) | undefined
+    startPublisher().then(fn => { if (disposed) fn(); else cleanup = fn }).catch(error => setPresentationError(String(error)))
+    return () => { disposed = true; cleanup?.(); setPresentationActive(false) }
+  }, [])
+
+  useEffect(() => {
+    const syncMeta = () => publish('app:meta', { board: activeBoard, studentLists, rootStyle: document.documentElement.style.cssText })
+    syncMeta()
+    const observer = new MutationObserver(syncMeta)
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] })
+    return () => observer.disconnect()
+  }, [activeBoard, studentLists])
+
+  useEffect(() => {
+    if (!presenting) return
+    let disposed = false
+    const timer = setInterval(() => {
+      invoke<boolean>('presentation_status').then(open => {
+        if (disposed || open) return
+        presentingRef.current = false
+        setPresenting(false)
+        setPresentationActive(false)
+      }).catch(error => { if (!disposed) setPresentationError(`발표 화면 상태 확인 실패: ${String(error)}`) })
+    }, 1000)
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); void toggleFullscreen() }
+    }
+    window.addEventListener('keydown', keydown)
+    return () => { disposed = true; clearInterval(timer); window.removeEventListener('keydown', keydown) }
+  }, [presenting])
 
   useEffect(() => {
     // 창 크기가 바뀔 때(전체화면 진입/해제, 초록 버튼 등) 실제 전체화면 여부와 뷰포트를 동기화
@@ -271,6 +327,11 @@ export default function App(): JSX.Element {
 
   return (
     <>
+    {(presenting || presentationError) && <div className={`presentation-status ${presentationError ? 'error' : ''}`} role="status">
+      <span>{presentationError || '다른 디스플레이에 발표 중 · 편집 내용이 바로 반영됩니다'}</span>
+      {presenting && <button onClick={toggleFullscreen}>발표 끝내기 (Esc)</button>}
+      {presentationError && <button onClick={() => setPresentationError('')}>닫기</button>}
+    </div>}
     {isFullscreen && (
       <div className="fullscreen-exit-zone">
         <button className="fullscreen-exit-button" title="전체화면 끝내기 (F11)" onClick={toggleFullscreen}>
@@ -279,7 +340,7 @@ export default function App(): JSX.Element {
       </div>
     )}
     <div className={`app-shell ${isFullscreen ? 'app-shell-fullscreen' : ''}`} style={shellStyle}>
-      <AppSidebar dashboardActive={appView === 'dashboard' && !activeBoard} studentsActive={appView === 'students'} settingsOpen={settingsOpen} fullscreen={isFullscreen} onFullscreen={toggleFullscreen} onDashboard={() => selectCategory('전체')} onStudents={() => { setAppView('students'); setActiveBoard(null); setSettingsOpen(false) }} onSettings={() => setSettingsOpen(value => !value)} />
+      <AppSidebar dashboardActive={appView === 'dashboard' && !activeBoard} studentsActive={appView === 'students'} settingsOpen={settingsOpen} fullscreen={isFullscreen || presenting} presenting={presenting} onFullscreen={toggleFullscreen} onDashboard={() => selectCategory('전체')} onStudents={() => { setAppView('students'); setActiveBoard(null); setSettingsOpen(false) }} onSettings={() => setSettingsOpen(value => !value)} />
       <section className="app-content">
         {appView === 'students' ? (
           <StudentLists lists={studentLists} onSave={saveStudentList} onDelete={deleteStudentList} />
@@ -287,12 +348,13 @@ export default function App(): JSX.Element {
           <Dashboard boards={boards} categories={categories} category={dashboardCategory} createRequest={createRequest} onCreateRequestHandled={() => setCreateRequest(0)} onSelectCategory={setDashboardCategory} onAddCategory={addCategory} onRenameCategory={renameCategory} onMoveCategory={moveCategory} onDeleteCategory={deleteCategory} onCreate={createBoard} onOpen={openBoard} onDelete={deleteBoard} />
         ) : (
           <main className="pandecki-daily-shell">
-      <DailyView
+      <BoardScope.Provider value={`board_${activeBoard.id}`}><DailyView
+        key={activeBoard.id}
         boardKey={`board_${activeBoard.id}`}
         boardTitle={activeBoard.title}
         systemFonts={systemFonts}
         studentLists={studentLists}
-      />
+      /></BoardScope.Provider>
           </main>
         )}
       </section>

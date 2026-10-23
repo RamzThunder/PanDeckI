@@ -5,6 +5,7 @@ interface Props {
   studentsActive: boolean
   settingsOpen: boolean
   fullscreen: boolean
+  presenting?: boolean
   onFullscreen: () => void
   onDashboard: () => void
   onStudents: () => void
@@ -18,7 +19,7 @@ const SettingsIcon = () => <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3
 const EnterFullscreenIcon = () => <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
 const ExitFullscreenIcon = () => <svg viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
 
-export default function AppSidebar({ dashboardActive, studentsActive, settingsOpen, fullscreen, onFullscreen, onDashboard, onStudents, onSettings }: Props): JSX.Element {
+export default function AppSidebar({ dashboardActive, studentsActive, settingsOpen, fullscreen, presenting, onFullscreen, onDashboard, onStudents, onSettings }: Props): JSX.Element {
   return (
     <aside className="app-sidebar">
       <button className="app-rail-logo" title="PanDeckI" onClick={onDashboard}>P</button>
@@ -26,7 +27,7 @@ export default function AppSidebar({ dashboardActive, studentsActive, settingsOp
         <button className={dashboardActive ? 'active' : ''} title="대시보드" onClick={onDashboard}><DashboardIcon /></button>
         <button className={studentsActive ? 'active' : ''} title="학생 목록" onClick={onStudents}><StudentsIcon /></button>
       </nav>
-      <button className={`app-rail-settings app-rail-fullscreen ${fullscreen ? 'active' : ''}`} title={fullscreen ? '전체화면 끝내기 (F11)' : '전체화면 (F11)'} onClick={onFullscreen}>{fullscreen ? <ExitFullscreenIcon /> : <EnterFullscreenIcon />}</button>
+      <button className={`app-rail-settings app-rail-fullscreen ${fullscreen ? 'active' : ''}`} title={presenting ? '발표 끝내기 (F11 / Esc)' : fullscreen ? '전체화면 끝내기 (F11)' : '전체화면 / 다른 디스플레이에 발표 (F11)'} onClick={onFullscreen}>{fullscreen ? <ExitFullscreenIcon /> : <EnterFullscreenIcon />}</button>
       <button className={`app-rail-settings ${settingsOpen ? 'active' : ''}`} title="설정" onClick={onSettings}><SettingsIcon /></button>
     </aside>
   )

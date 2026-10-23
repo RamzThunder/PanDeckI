@@ -1,6 +1,6 @@
 {
   "productName": "PanDeckI",
-  "version": "1.0.26",
+  "version": "1.0.27",
   "identifier": "com.subinlee.pandecki",
   "build": {
     "frontendDist": "../dist",

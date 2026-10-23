@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box}html,body,#player{width:100%;height:100%;background:#000;overflow:hidden}</style></head>
+<body><div id="player"></div><script>
+const mirror = new URLSearchParams(location.search).get('mirror') === '1';
+let player, ready = false, pending;
+function notify() {
+  if (!ready || mirror) return;
+  parent.postMessage({type:'pandecki-video-state',time:player.getCurrentTime(),paused:player.getPlayerState()!==1,rate:player.getPlaybackRate()}, '*');
+}
+function sync(data) {
+  if (!ready) { pending = data; return; }
+  player.mute();
+  if (Math.abs(player.getCurrentTime()-data.time)>0.6) player.seekTo(data.time,true);
+  if (player.getPlaybackRate()!==data.rate) player.setPlaybackRate(data.rate);
+  if (data.paused) player.pauseVideo();
+  else if(player.getPlayerState()!==1 && player.getPlayerState()!==3) player.playVideo();
+}
+window.addEventListener('message', event => {
+  if (event.source!==parent || !mirror || event.data?.type!=='pandecki-video-sync') return;
+  if (!Number.isFinite(event.data.time) || !Number.isFinite(event.data.rate)) return;
+  sync(event.data);
+});
+window.onYouTubeIframeAPIReady = () => {
+  player = new YT.Player('player', {videoId:'__VIDEO_ID__', playerVars:{rel:0,playsinline:1,controls:mirror?0:1,mute:mirror?1:0,origin:location.origin},events:{
+    onReady:()=>{ready=true;if(mirror)player.mute();parent.postMessage({type:'pandecki-video-ready'},'*');if(pending)sync(pending);notify();},
+    onStateChange:notify,onPlaybackRateChange:notify,
+    onError:()=>parent.postMessage({type:'pandecki-video-error'},'*')
+  }});
+};
+setInterval(notify,500);
+</script><script src="https://www.youtube.com/iframe_api"></script></body></html>

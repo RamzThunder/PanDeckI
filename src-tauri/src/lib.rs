@@ -1,5 +1,6 @@
 mod db;
 mod commands;
+mod presentation;
 
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -44,9 +45,7 @@ fn handle_youtube_proxy(mut stream: std::net::TcpStream) {
         .take(11)
         .collect();
 
-    let html = format!(
-        r#"<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{{margin:0;padding:0;box-sizing:border-box}}html,body{{width:100%;height:100%;background:#000;overflow:hidden}}</style></head><body><iframe src="https://www.youtube.com/embed/{safe_id}?rel=0&playsinline=1" width="100%" height="100%" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></body></html>"#
-    );
+    let html = include_str!("youtube-player.html").replace("__VIDEO_ID__", &safe_id);
     let resp = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         html.len(), html
@@ -78,6 +77,20 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
+        .manage(commands::PresentationTarget(std::sync::Mutex::new(None)))
+        .on_window_event(|window, event| {
+            #[cfg(target_os = "macos")]
+            if window.label() == "presentation" && matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
+                let _ = window.set_simple_fullscreen(false);
+            }
+            if window.label() == "main" && matches!(event, tauri::WindowEvent::Destroyed) {
+                if let Some(presentation) = window.app_handle().get_webview_window("presentation") {
+                    #[cfg(target_os = "macos")]
+                    let _ = presentation.set_simple_fullscreen(false);
+                    let _ = presentation.destroy();
+                }
+            }
+        })
         .setup(move |app| {
             let yt_port = start_youtube_proxy();
             app.manage(YoutubeProxyPort(yt_port));
@@ -122,6 +135,9 @@ pub fn run() {
             commands::resize_window,
             commands::window_close,
             commands::set_fullscreen,
+            commands::start_presentation,
+            commands::stop_presentation,
+            commands::presentation_status,
             commands::read_whattime_schedule,
             commands::pick_whattime_schedule,
             commands::is_fullscreen,

@@ -1378,3 +1378,13 @@ html.is-fullscreen, html.is-fullscreen body { background: #111; }
 .update-notice-actions button.primary { border-color: var(--color-primary); color: #fff; background: var(--color-primary); }
 .update-notice-bar { height: 6px; margin-top: 4px; overflow: hidden; border-radius: 3px; background: #eef1f4; }
 .update-notice-bar > div { height: 100%; background: var(--color-primary); transition: width .2s; }
+
+/* Audience window keeps the editor's 1744 × 1012 board coordinates. */
+.presentation-stage { position: absolute; overflow: hidden; background: #111; }
+.presentation-stage .board-dock,
+.presentation-stage .random-picker-button-area { display: none !important; }
+.presentation-stage .random-picker { pointer-events: none; }
+.presentation-waiting { height: 100%; display: grid; place-items: center; color: #ddd; font-size: 28px; }
+.presentation-status { position: fixed; top: 8px; right: 12px; z-index: 2147483647; display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-radius: 12px; background: #25364b; color: white; font-size: 12px; box-shadow: 0 3px 12px #0003; }
+.presentation-status button { border: 1px solid #ffffff55; background: transparent; color: inherit; border-radius: 6px; padding: 3px 8px; cursor: pointer; }
+.presentation-status.error { background: #8d3030; }

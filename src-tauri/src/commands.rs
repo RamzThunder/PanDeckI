@@ -403,6 +403,62 @@ pub fn is_fullscreen(app: AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+// Presentation uses a borderless monitor-sized window. On macOS this keeps the
+// editor and audience view on the same Space instead of switching Spaces.
+pub struct PresentationTarget(pub std::sync::Mutex<Option<(i32, i32)>>);
+
+#[command]
+pub async fn start_presentation(app: AppHandle, target: State<'_, PresentationTarget>) -> Result<bool, String> {
+    use tauri::{WebviewUrl, WebviewWindowBuilder};
+    if app.get_webview_window("presentation").is_some() { return Ok(true); }
+    let main = app.get_webview_window("main").ok_or("편집 창을 찾을 수 없습니다.")?;
+    let current = main.current_monitor().map_err(|e| e.to_string())?
+        .ok_or("현재 디스플레이를 확인할 수 없습니다.")?;
+    let monitors = main.available_monitors().map_err(|e| e.to_string())?;
+    let Some(monitor) = monitors.iter().find(|m| m.position() != current.position()) else {
+        return Ok(false);
+    };
+    let window = WebviewWindowBuilder::new(&app, "presentation", WebviewUrl::App("index.html?presentation=1".into()))
+        .title("PanDeckI — 발표 화면")
+        .decorations(false).resizable(false).visible(false).focused(false)
+        .inner_size(640.0, 360.0)
+        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15")
+        .build().map_err(|e| e.to_string())?;
+    if let Err(error) = crate::presentation::configure(window.clone(), main, monitor.clone()).await {
+        #[cfg(target_os = "macos")]
+        let _ = window.set_simple_fullscreen(false);
+        let _ = window.destroy();
+        return Err(error.to_string());
+    }
+    *target.0.lock().map_err(|e| e.to_string())? = Some((monitor.position().x, monitor.position().y));
+    Ok(true)
+}
+
+#[command]
+pub fn stop_presentation(app: AppHandle, target: State<PresentationTarget>) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("presentation") {
+        #[cfg(target_os = "macos")]
+        window.set_simple_fullscreen(false).map_err(|e| e.to_string())?;
+        window.destroy().map_err(|e| e.to_string())?;
+    }
+    *target.0.lock().map_err(|e| e.to_string())? = None;
+    Ok(())
+}
+
+#[command]
+pub fn presentation_status(app: AppHandle, target: State<PresentationTarget>) -> Result<bool, String> {
+    let Some(window) = app.get_webview_window("presentation") else { return Ok(false) };
+    let position = *target.0.lock().map_err(|e| e.to_string())?;
+    let monitors = window.available_monitors().map_err(|e| e.to_string())?;
+    if let Some((x, y)) = position {
+        if !monitors.iter().any(|m| m.position().x == x && m.position().y == y) {
+            stop_presentation(app, target)?;
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
 // ── 백업 / 복원 ───────────────────────────────────────────────────────────────
 
 #[command]

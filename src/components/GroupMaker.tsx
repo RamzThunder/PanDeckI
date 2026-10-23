@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useBoardState, useEditorEffect } from '../presentation/sync'
+import React, { useRef, useState } from 'react'
 import type { StudentList } from '../pages/StudentLists'
 
 export interface GroupResult {
@@ -75,13 +76,13 @@ export default function GroupMaker({
   initialResult, onResultChange,
 }: Props): JSX.Element {
   const availableLists = lists.filter(list => list.students.length > 0)
-  const [listId, setListId] = useState(initialResult?.listId ?? availableLists[0]?.id ?? '')
-  const [groupCount, setGroupCount] = useState(initialResult?.groupCount ?? 4)
-  const [groups, setGroups] = useState<number[][] | null>(initialResult?.groups ?? null)
-  const [absent, setAbsent] = useState<number[]>(initialResult?.absent ?? [])
+  const [listId, setListId] = useBoardState('group:listId', initialResult?.listId ?? availableLists[0]?.id ?? '')
+  const [groupCount, setGroupCount] = useBoardState('group:groupCount', initialResult?.groupCount ?? 4)
+  const [groups, setGroups] = useBoardState<number[][] | null>('group:groups', initialResult?.groups ?? null)
+  const [absent, setAbsent] = useBoardState<number[]>('group:absent', initialResult?.absent ?? [])
   const [showSettings, setShowSettings] = useState(false)
-  const [rolling, setRolling] = useState(false)
-  const [rollingGroups, setRollingGroups] = useState<number[][] | null>(null)
+  const [rolling, setRolling] = useBoardState('group:rolling', false)
+  const [rollingGroups, setRollingGroups] = useBoardState<number[][] | null>('group:rollingGroups', null)
   const onResultChangeRef = useRef(onResultChange)
 
   const timersRef = useRef<number[]>([])
@@ -133,7 +134,7 @@ export default function GroupMaker({
     top: Math.max(-position.y + 8, Math.min(-2, CANVAS_H - position.y - SETTINGS_MAX_H)),
   }
 
-  useEffect(() => {
+  useEditorEffect(() => {
     setGroups(null)
     setAbsent([])
     timersRef.current.forEach(window.clearTimeout)
@@ -142,19 +143,19 @@ export default function GroupMaker({
     setRollingGroups(null)
   }, [listId])
 
-  useEffect(() => {
+  useEditorEffect(() => {
     if (!availableLists.some(list => list.id === listId)) setListId(availableLists[0]?.id ?? '')
   }, [lists, listId])
 
-  useEffect(() => { onResultChangeRef.current = onResultChange }, [onResultChange])
+  useEditorEffect(() => { onResultChangeRef.current = onResultChange }, [onResultChange])
 
-  useEffect(() => {
+  useEditorEffect(() => {
     if (!selected) setShowSettings(false)
   }, [selected])
 
-  useEffect(() => () => timersRef.current.forEach(window.clearTimeout), [])
+  useEditorEffect(() => () => timersRef.current.forEach(window.clearTimeout), [])
 
-  useEffect(() => {
+  useEditorEffect(() => {
     const move = (event: PointerEvent) => {
       const widgetRect = widgetRef.current?.getBoundingClientRect()
       const pointerScale = widgetRef.current && widgetRect ? widgetRef.current.offsetWidth / widgetRect.width : 1

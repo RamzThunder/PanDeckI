@@ -1,4 +1,6 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react'
+import PresentationVideo from '../presentation/PresentationVideo'
+import { BoardScope, isPresentation, publish, useRemoteValue, useBoardState, useEditorEffect } from '../presentation/sync'
+import React, { useState, useCallback, useRef, useContext } from 'react'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import QRCode from 'qrcode'
 import { api } from '../api'
@@ -461,7 +463,7 @@ function InteractiveOverlay({ url, cmdHeld }: { url: string; cmdHeld: boolean })
 
 export default function DailyView({ boardKey, boardTitle, systemFonts, studentLists }: Props): JSX.Element {
   const dateStr = boardKey
-  const [data, setData] = useState<DailyData>(DEFAULT_DATA)
+  const [data, setData] = useBoardState<DailyData>('data', DEFAULT_DATA)
   const [saved, setSaved] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [multiIds, setMultiIds] = useState<string[]>([])
@@ -480,18 +482,18 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
   const [qrEditUrl, setQrEditUrl] = useState('')
   const [qrEditTitle, setQrEditTitle] = useState('')
   const [showBackgroundMenu, setShowBackgroundMenu] = useState(false)
-  const [showRandomPicker, setShowRandomPicker] = useState(false)
+  const [showRandomPicker, setShowRandomPicker] = useBoardState('showRandomPicker', false)
   const [randomPickerSelected, setRandomPickerSelected] = useState(false)
-  const [randomPickerPosition, setRandomPickerPosition] = useState({ x: 120, y: 90 })
-  const [randomPickerSize, setRandomPickerSize] = useState({ width: 620, height: 380 })
-  const [randomPickerZ, setRandomPickerZ] = useState(10000)
-  const [pickerInitResult, setPickerInitResult] = useState<import('../components/RandomStudentPicker').PickerResult | undefined>(undefined)
-  const [groupInitResult, setGroupInitResult] = useState<import('../components/GroupMaker').GroupResult | undefined>(undefined)
-  const [showGroupMaker, setShowGroupMaker] = useState(false)
+  const [randomPickerPosition, setRandomPickerPosition] = useBoardState('randomPickerPosition', { x: 120, y: 90 })
+  const [randomPickerSize, setRandomPickerSize] = useBoardState('randomPickerSize', { width: 620, height: 380 })
+  const [randomPickerZ, setRandomPickerZ] = useBoardState('randomPickerZ', 10000)
+  const [pickerInitResult, setPickerInitResult] = useBoardState<import('../components/RandomStudentPicker').PickerResult | undefined>('pickerInitResult', undefined)
+  const [groupInitResult, setGroupInitResult] = useBoardState<import('../components/GroupMaker').GroupResult | undefined>('groupInitResult', undefined)
+  const [showGroupMaker, setShowGroupMaker] = useBoardState('showGroupMaker', false)
   const [groupMakerSelected, setGroupMakerSelected] = useState(false)
-  const [groupMakerPosition, setGroupMakerPosition] = useState({ x: 160, y: 120 })
-  const [groupMakerSize, setGroupMakerSize] = useState({ width: 680, height: 420 })
-  const [groupMakerZ, setGroupMakerZ] = useState(10000)
+  const [groupMakerPosition, setGroupMakerPosition] = useBoardState('groupMakerPosition', { x: 160, y: 120 })
+  const [groupMakerSize, setGroupMakerSize] = useBoardState('groupMakerSize', { width: 680, height: 420 })
+  const [groupMakerZ, setGroupMakerZ] = useBoardState('groupMakerZ', 10000)
   const [dockVisible, setDockVisible] = useState(true)
   const dockHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [showVideoUrlInput, setShowVideoUrlInput] = useState(false)
@@ -501,7 +503,7 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
   const [fontSearch, setFontSearch] = useState('')
   const [showFontList, setShowFontList] = useState(false)
   const [showFontSizeList, setShowFontSizeList] = useState(false)
-  const [customShapes, setCustomShapes] = useState<CustomShape[]>([])
+  const [customShapes, setCustomShapes] = useBoardState<CustomShape[]>('customShapes', [])
 
   // Background inputs
   const [bgHexInput, setBgHexInput] = useState(DEFAULT_DATA.bg)
@@ -521,12 +523,22 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
   const elClipboardRef   = useRef<CanvasEl[]>([])
   const persistRef    = useRef<(d: DailyData) => Promise<void>>(() => Promise.resolve())
   const [clockTime, setClockTime] = useState(() => new Date())
-  const [timetable, setTimetable] = useState<TimetableSchedule | null>(null)
+  const [timetable, setTimetable] = useBoardState<TimetableSchedule | null>('timetable', null)
   const [showTimetableEditor, setShowTimetableEditor] = useState(false)
   const [ttColorPanelId, setTtColorPanelId] = useState<string | null>(null)
-  const [youtubePort, setYoutubePort] = useState(0)
+  const [youtubePort, setYoutubePort] = useBoardState('youtubePort', 0)
   const historyRef    = useRef<DailyData[]>([])
   const historyIdxRef = useRef(-1)
+
+  const scope = useContext(BoardScope)
+  const preview = useRemoteValue<Record<string, Record<string, string>> | null>(`${scope}:geometry`, null)
+  React.useEffect(() => {
+    if (!isPresentation || !preview) return
+    for (const [id, style] of Object.entries(preview)) {
+      const node = canvasRef.current?.querySelector<HTMLElement>(`[data-id="${id}"]`)
+      if (node) Object.assign(node.style, style)
+    }
+  }, [preview])
 
   const dateLabel = boardTitle
 
@@ -542,23 +554,23 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
     }, 1400)
   }, [showStickers, showVideoMenu, showClockMenu, showQrMenu, showBackgroundMenu])
 
-  useEffect(() => {
+  useEditorEffect(() => {
     scheduleDockHide()
     return () => {
       if (dockHideTimerRef.current) clearTimeout(dockHideTimerRef.current)
     }
   }, [scheduleDockHide])
 
-  useEffect(() => {
+  useEditorEffect(() => {
     if (showStickers || showVideoMenu || showClockMenu || showQrMenu || showBackgroundMenu) showDock()
   }, [showStickers, showVideoMenu, showClockMenu, showQrMenu, showBackgroundMenu, showDock])
 
-  useEffect(() => {
+  React.useEffect(() => {
     const timer = window.setInterval(() => setClockTime(new Date()), 1000)
     return () => window.clearInterval(timer)
   }, [])
 
-  useEffect(() => {
+  useEditorEffect(() => {
     // 저장된 시정표 로드. Whattime에서 가져온 시정표는 Whattime 쪽 최신 내용으로 자동 갱신
     api.settings.get('timetableSchedule').then(async stored => {
       let schedule: TimetableSchedule | null = null
@@ -577,11 +589,11 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
     }).catch(() => {})
   }, [])
 
-  useEffect(() => {
+  useEditorEffect(() => {
     api.video.getYoutubePort().then(setYoutubePort).catch(() => {})
   }, [])
 
-  useEffect(() => {
+  useEditorEffect(() => {
     historyRef.current = []
     historyIdxRef.current = -1
     api.entry.get(dateStr).then(raw => {
@@ -618,7 +630,7 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
   }, [dateStr])
 
   // Load global settings
-  useEffect(() => {
+  useEditorEffect(() => {
     api.settings.get('customShapes').then(raw => {
       if (raw) try { setCustomShapes(JSON.parse(raw)) } catch {}
     }).catch(() => {})
@@ -628,7 +640,7 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
   }, [])
 
   // Sync text/border/bg color inputs when selection changes
-  useEffect(() => {
+  useEditorEffect(() => {
     const el = data.elements.find(e => e.id === selectedId)
     setTextColorInput(el?.color ?? '#4A3F3F')
     setBorderColorInput(el?.borderColor ?? '#333333')
@@ -644,6 +656,7 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
   }, [])
 
   const persist = useCallback(async (d: DailyData) => {
+    if (isPresentation) return
     const snapshot = JSON.parse(JSON.stringify(d))
     historyRef.current = historyRef.current.slice(0, historyIdxRef.current + 1)
     historyRef.current.push(snapshot)
@@ -666,7 +679,7 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
 
   // ── 텍스트 글자별 서식 ─────────────────────────────────────────────────────
   const prevEditingRef = useRef<string | null>(null)
-  useEffect(() => {
+  useEditorEffect(() => {
     // 편집이 끝나면(포커스 이동, 캔버스 클릭, 다른 요소 선택 등 어떤 경로든) 저장. 빈 텍스트 박스는 삭제
     const prev = prevEditingRef.current
     prevEditingRef.current = editingId
@@ -683,11 +696,11 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
     }
   }, [editingId, persist])
 
-  useEffect(() => {
+  useEditorEffect(() => {
     if (editingId && selectedId !== editingId) setEditingId(null)
   }, [selectedId, editingId])
 
-  useEffect(() => {
+  useEditorEffect(() => {
     const el = dataRef.current.elements.find(x => x.id === selectedId)
     if (!el || el.type !== 'text') return
     if (editingId === el.id && textSel && textSel.end > textSel.start) setTextColorInput(rangeStyle(runsOf(el), textSel.start, textSel.end, el).color ?? '')
@@ -911,7 +924,7 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
   }
 
   // ── Keyboard shortcuts ───────────────────────────────────────────────────
-  useEffect(() => {
+  useEditorEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return
@@ -957,9 +970,9 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
   }, [selectedId, multiIds, editingId, deleteSelected, undo, redo])
 
   // ── Cmd key tracking (영상 재생 모드) ─────────────────────────────────────
-  useEffect(() => {
-    const onDown = (e: KeyboardEvent) => { if (e.key === 'Meta') setCmdHeld(true) }
-    const onUp   = (e: KeyboardEvent) => { if (e.key === 'Meta') setCmdHeld(false) }
+  useEditorEffect(() => {
+    const onDown = (e: KeyboardEvent) => { if (e.key === 'Meta' || e.key === 'Control') setCmdHeld(true) }
+    const onUp   = (e: KeyboardEvent) => { if (e.key === 'Meta' || e.key === 'Control') setCmdHeld(e.metaKey || e.ctrlKey) }
     const onBlur = () => setCmdHeld(false)
     window.addEventListener('keydown', onDown)
     window.addEventListener('keyup', onUp)
@@ -972,7 +985,7 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
   }, [])
 
   // ── Clipboard paste ───────────────────────────────────────────────────────
-  useEffect(() => {
+  useEditorEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
       const tag = (e.target as HTMLElement).tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return
@@ -1042,7 +1055,7 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
   }, [])
 
   // ── Window pointer handlers ───────────────────────────────────────────────
-  useEffect(() => {
+  useEditorEffect(() => {
     function onMove(e: PointerEvent) {
       const op = opRef.current
       if (!op) return
@@ -1146,6 +1159,7 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
       const op = opRef.current
       if (!op) return
       opRef.current = null
+      publish(`${scope}:geometry`, null)
 
       if (op.kind === 'marquee') {
         setMarqueeRect(null)
@@ -1200,9 +1214,21 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
       setData(next); persistRef.current(next)
     }
 
-    window.addEventListener('pointermove', onMove)
+    const onMoveWithPreview = (event: PointerEvent) => {
+      onMove(event)
+      const op = opRef.current
+      if (!op || op.kind === 'marquee') return
+      const ids = 'ids' in op ? op.ids : [op.id]
+      const geometry: Record<string, Record<string, string>> = {}
+      ids.forEach(id => {
+        const node = canvasRef.current?.querySelector<HTMLElement>(`[data-id="${id}"]`)
+        if (node) geometry[id] = { left: node.style.left, top: node.style.top, width: node.style.width, height: node.style.height, transform: node.style.transform }
+      })
+      publish(`${scope}:geometry`, geometry)
+    }
+    window.addEventListener('pointermove', onMoveWithPreview)
     window.addEventListener('pointerup',   onUp)
-    return () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp) }
+    return () => { window.removeEventListener('pointermove', onMoveWithPreview); window.removeEventListener('pointerup', onUp) }
   }, [])
 
   const startMarquee = (e: React.PointerEvent) => {
@@ -1432,7 +1458,7 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
     : { background: data.bg }
 
   return (
-    <div className="flex flex-col h-full select-none relative" style={canvasBgStyle}
+    <div {...(isPresentation ? { inert: '' } : {})} className="flex flex-col h-full select-none relative" style={{ ...canvasBgStyle, pointerEvents: isPresentation ? 'none' : undefined }}
       onMouseMove={e => {
         const rect = e.currentTarget.getBoundingClientRect()
         if (rect.bottom - e.clientY <= 100) showDock()
@@ -1457,7 +1483,7 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
       </svg>
 
       {/* Auto-hiding bottom dock */}
-      <div className="flex items-center justify-center gap-1.5 px-3 py-2"
+      <div className="board-dock flex items-center justify-center gap-1.5 px-3 py-2"
         style={{
           position: 'absolute', left: '50%', bottom: 14, zIndex: 200000,
           maxWidth: 'calc(100% - 28px)', minHeight: 48, overflow: 'visible',
@@ -1851,21 +1877,9 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
 
                 {el.type === 'video' && (
                   <div style={{ width: '100%', height: '100%', borderRadius: 6, overflow: 'hidden', position: 'relative', background: '#000' }}>
-                    {el.videoType === 'embed' ? (
-                      <iframe
-                        src={getVideoRenderUrl(el.content, youtubePort) ?? ''}
-                        style={{ width: '100%', height: '100%', border: 'none', pointerEvents: cmdHeld ? 'auto' : 'none' }}
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                        allowFullScreen
-                      />
-                    ) : (
-                      <video
-                        src={convertFileSrc(el.content)}
-                        style={{ width: '100%', height: '100%', objectFit: 'contain', pointerEvents: cmdHeld ? 'auto' : 'none' }}
-                        controls
-                        playsInline
-                      />
-                    )}
+                    <PresentationVideo key={`${el.id}:${el.content}`} id={el.id}
+                      embed={el.videoType === 'embed'} interactive={cmdHeld}
+                      src={el.videoType === 'embed' ? getVideoRenderUrl(el.content, youtubePort) ?? '' : convertFileSrc(el.content)} />
                   </div>
                 )}
 
@@ -2499,7 +2513,7 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
         onMoveForward={() => setRandomPickerZ(z => z + 1)}
         onMoveBack={() => setRandomPickerZ(z => Math.max(0, z - 1))}
         initialResult={pickerInitResult}
-        onResultChange={result => api.settings.set(`pickerWidget_${dateStr}`, JSON.stringify({ ...result, position: randomPickerPosition, size: randomPickerSize, z: randomPickerZ }))}
+        onResultChange={isPresentation ? undefined : result => api.settings.set(`pickerWidget_${dateStr}`, JSON.stringify({ ...result, position: randomPickerPosition, size: randomPickerSize, z: randomPickerZ }))}
       />
 
       <GroupMaker
@@ -2519,7 +2533,7 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
         onMoveForward={() => setGroupMakerZ(z => z + 1)}
         onMoveBack={() => setGroupMakerZ(z => Math.max(0, z - 1))}
         initialResult={groupInitResult}
-        onResultChange={result => api.settings.set(`groupWidget_${dateStr}`, JSON.stringify({ ...result, position: groupMakerPosition, size: groupMakerSize, z: groupMakerZ }))}
+        onResultChange={isPresentation ? undefined : result => api.settings.set(`groupWidget_${dateStr}`, JSON.stringify({ ...result, position: groupMakerPosition, size: groupMakerSize, z: groupMakerZ }))}
       />
 
     </div>

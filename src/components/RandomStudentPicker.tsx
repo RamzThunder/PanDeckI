@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useBoardState, useEditorEffect } from '../presentation/sync'
+import React, { useMemo, useRef, useState } from 'react'
 import type { StudentList } from '../pages/StudentLists'
 
 export interface PickerResult {
@@ -53,16 +54,16 @@ export default function RandomStudentPicker({
   initialResult, onResultChange,
 }: Props): JSX.Element {
   const availableLists = lists.filter(list => list.students.length > 0)
-  const [listId, setListId] = useState(initialResult?.listId ?? availableLists[0]?.id ?? '')
+  const [listId, setListId] = useBoardState('picker:listId', initialResult?.listId ?? availableLists[0]?.id ?? '')
 
-  const [excluded, setExcluded] = useState<number[]>(initialResult?.excluded ?? [])
-  const [absent, setAbsent] = useState<number[]>(initialResult?.absent ?? [])
-  const [resultIndices, setResultIndices] = useState<number[]>(initialResult?.resultIndices ?? [])
-  const [rollingName, setRollingName] = useState('')
-  const [drawing, setDrawing] = useState(false)
-  const [animations, setAnimations] = useState(true)
-  const [remember, setRemember] = useState(true)
-  const [drawCount, setDrawCount] = useState(1)
+  const [excluded, setExcluded] = useBoardState<number[]>('picker:excluded', initialResult?.excluded ?? [])
+  const [absent, setAbsent] = useBoardState<number[]>('picker:absent', initialResult?.absent ?? [])
+  const [resultIndices, setResultIndices] = useBoardState<number[]>('picker:resultIndices', initialResult?.resultIndices ?? [])
+  const [rollingName, setRollingName] = useBoardState('picker:rollingName', '')
+  const [drawing, setDrawing] = useBoardState('picker:drawing', false)
+  const [animations, setAnimations] = useBoardState('picker:animations', true)
+  const [remember, setRemember] = useBoardState('picker:remember', true)
+  const [drawCount, setDrawCount] = useBoardState('picker:drawCount', 1)
   const onResultChangeRef = useRef(onResultChange)
 
   const [showSettings, setShowSettings] = useState(false)
@@ -92,7 +93,7 @@ export default function RandomStudentPicker({
     [selectedList, resultIndices],
   )
 
-  useEffect(() => { onResultChangeRef.current = onResultChange }, [onResultChange])
+  useEditorEffect(() => { onResultChangeRef.current = onResultChange }, [onResultChange])
 
   const contentScale = Math.max(0.4, Math.min(2.2, Math.min(size.width / 620, size.height / 380)))
   const buttonAreaH = (58 + 32) * contentScale
@@ -121,24 +122,24 @@ export default function RandomStudentPicker({
     top: Math.max(-position.y + 8, Math.min(-2, CANVAS_H - position.y - SETTINGS_MAX_H)),
   }
 
-  useEffect(() => {
+  useEditorEffect(() => {
     setExcluded([])
     setAbsent([])
     setResultIndices([])
     setRollingName('')
   }, [listId])
 
-  useEffect(() => {
+  useEditorEffect(() => {
     if (!availableLists.some(list => list.id === listId)) setListId(availableLists[0]?.id ?? '')
   }, [lists, listId])
 
-  useEffect(() => () => timersRef.current.forEach(window.clearTimeout), [])
+  useEditorEffect(() => () => timersRef.current.forEach(window.clearTimeout), [])
 
-  useEffect(() => {
+  useEditorEffect(() => {
     if (!selected) { setShowSettings(false); setShowMore(false) }
   }, [selected])
 
-  useEffect(() => {
+  useEditorEffect(() => {
     const move = (event: PointerEvent) => {
       const widgetRect = widgetRef.current?.getBoundingClientRect()
       const pointerScale = widgetRef.current && widgetRect ? widgetRef.current.offsetWidth / widgetRect.width : 1

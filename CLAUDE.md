@@ -137,6 +137,16 @@ export interface DailyData {
 - 줌: Cmd/Ctrl+스크롤 또는 설정 패널 슬라이더 (50~150%), settings DB에 영속
 - 전체화면: 사이드바 전체화면 버튼 / F11 / Cmd+Ctrl+F (`set_fullscreen`, `is_fullscreen` 커맨드). 사이드바를 숨기고 콘텐츠 영역(1744×1012)을 디스플레이에 맞춰 비율 유지 확대 + 가운데 정렬(남는 영역 #111). 오른쪽 위 구석 호버 시 끝내기 버튼. 전체화면 중 Cmd+스크롤 줌 비활성
 
+## 듀얼 디스플레이 발표 모드
+- 전체화면 버튼 / F11 / Cmd+Ctrl+F: 다른 디스플레이가 있으면 별도 `presentation` 창에 판을 표시하고 메인 창은 편집 가능 상태 유지. 하나뿐이면 기존 전체화면으로 동작.
+- 발표 창은 `index.html?presentation=1` → `src/presentation/PresentationApp.tsx`. 고정 1744×1012 좌표를 비율 유지 확대. 편집 도크·선택 테두리·조작 버튼을 숨기며 편집/저장 effect는 실행하지 않음.
+- `src/presentation/sync.ts`: 편집 창이 상태의 원본. `useBoardState`로 판·시정표·학생 위젯 상태를 32ms 단위 묶음 전송. 발표 창 준비 이벤트에 전체 스냅샷 전송, 이후 변경 키만 전송하며 data URL 이미지는 연결당 한 번 전송. 드래그 도중 DOM 위치/크기도 별도 전달.
+- 메인 창에서 판을 전환하면 발표 창도 전환. 대시보드/학생 목록에서는 발표 창에 판 선택 안내 표시. Esc / 전체화면 버튼으로 종료, 모니터 분리 감지 시 발표 창 종료.
+- macOS는 `set_simple_fullscreen`으로 별도 Space 전환 없이 출력하며 종료 시 복원. 다른 플랫폼은 일반 전체화면. `src-tauri/src/presentation.rs`에서 대상 모니터의 배율로 논리 좌표를 계산하고, 실제 창 위치·소속 모니터가 바뀐 것을 확인한 뒤 전체화면 적용. 화면 크기까지 확인 후 창 표시하며, 각 단계가 3초 내 완료되지 않으면 창을 닫고 오류 표시. 창 이동/크기 명령은 macOS에서 비동기이므로 연속 호출만으로 완료를 가정하지 않음.
+- `PresentationVideo.tsx`: 편집 창에서 영상 재생·일시정지·탐색 조작, 발표 창은 음소거로 동기화하여 중복 오디오 방지. YouTube는 `src-tauri/src/youtube-player.html` API 브리지, Vimeo는 플레이어 메시지 API 사용. 로컬 영상도 지원. 임베드 영상은 네트워크/제공자 정책에 영향받음.
+- 커맨드: `start_presentation` (다른 화면 없으면 false), `stop_presentation`, `presentation_status`.
+- 검증: `npm run test:presentation`, `npm run build`, `cargo check --manifest-path src-tauri/Cargo.toml`. macOS WebKit 렌더링 smoke test는 빌드 후 `swift scripts/presentation-webkit-smoke.swift` (임시 데이터, 실제 DB 접근 없음). 실제 디스플레이의 DPI·배치·연결 해제 및 외부 영상 재생은 실기기 확인 필요.
+
 ## 구현된 기능
 - **자유 캔버스**: 텍스트/스티커/사진/카드/비디오 자유 배치, 드래그/리사이즈/회전
 - **드래그**: `window.addEventListener('pointermove/pointerup')` 방식 (React synthetic event 문제 우회)
