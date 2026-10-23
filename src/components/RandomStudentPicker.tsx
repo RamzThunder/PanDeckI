@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { api } from '../api'
 import type { StudentList } from '../pages/StudentLists'
 
 export interface PickerResult {

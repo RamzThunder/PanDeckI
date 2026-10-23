@@ -78,7 +78,6 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
         .setup(move |app| {
             let yt_port = start_youtube_proxy();
             app.manage(YoutubeProxyPort(yt_port));
@@ -110,10 +109,6 @@ pub fn run() {
             commands::get_entry,
             commands::save_entry,
             commands::delete_entry,
-            commands::list_month_entries,
-            commands::list_month_bgs,
-            commands::get_monthly,
-            commands::save_monthly,
             commands::get_setting,
             commands::get_settings_batch,
             commands::set_setting,
@@ -124,18 +119,14 @@ pub fn run() {
             commands::list_sticker_packs,
             commands::pick_sticker_dir,
             commands::list_system_fonts,
-            commands::font_data_url,
             commands::resize_window,
-            commands::window_start_dragging,
             commands::window_close,
-            commands::window_minimize,
-            commands::window_toggle_maximize,
+            commands::set_fullscreen,
+            commands::read_whattime_schedule,
+            commands::pick_whattime_schedule,
+            commands::is_fullscreen,
             commands::fetch_text,
             commands::fetch_image_b64,
-            commands::save_png,
-            commands::capture_screenshot_to,
-            commands::capture_screenshot_b64,
-            commands::capture_region_b64,
             commands::backup_export_to,
             commands::backup_import_from,
             commands::get_db_path,

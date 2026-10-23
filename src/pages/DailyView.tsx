@@ -2,38 +2,34 @@ import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import QRCode from 'qrcode'
 import { api } from '../api'
-import { toLocalDate } from '../store/diary'
 import StickerPicker from '../components/StickerPicker'
 import CropModal, { CustomShape } from '../components/CropModal'
 import RandomStudentPicker from '../components/RandomStudentPicker'
 import GroupMaker from '../components/GroupMaker'
+import TimetableClock, { TimetableColors, TimetableSchedule, parseWhattimeSchedule } from '../components/TimetableClock'
+import TimetableEditor from '../components/TimetableEditor'
+import TimetableColorPanel from '../components/TimetableColorPanel'
+import { RichTextContent, RichTextEditor, RichTextEditorHandle, RunStyle, TextRun, applyStyleToRange, clearStyleKeys, normalizeRuns, plainText, rangeStyle, runsOf } from '../components/RichText'
 import type { StudentList } from './StudentLists'
-import ReactMarkdown from 'react-markdown'
-import { toPng } from 'html-to-image'
 
 const IS_WINDOWS = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent)
 
 interface Props {
-  currentDate: Date
-  onPrev: () => void
-  onNext: () => void
-  onToday: () => void
-  boardKey?: string
-  boardTitle?: string
+  boardKey: string
+  boardTitle: string
   systemFonts: string[]
-  globalFont: string
-  diaryName: string
   studentLists: StudentList[]
 }
 
 export interface CanvasEl {
   id: string
-  type: 'text' | 'sticker' | 'photo' | 'video' | 'markdown' | 'analogClock' | 'digitalClock' | 'qr'
+  type: 'text' | 'sticker' | 'photo' | 'video' | 'analogClock' | 'digitalClock' | 'timetableClock' | 'qr'
   videoType?: 'embed' | 'local'
   x: number; y: number; w: number; h: number; z: number
   rotation: number
   opacity: number
   content: string
+  runs?: TextRun[]          // 텍스트 글자별 서식 (색/크기/굵게/기울임/밑줄/취소선). 없으면 박스 전체 서식
   fontSize: number; color: string; bold: boolean; italic: boolean
   underline?: boolean; strikethrough?: boolean
   letterSpacing?: number
@@ -58,6 +54,11 @@ export interface CanvasEl {
   clockHandColor?: string    // 시침/분침 + 중앙 원
   clockSecondColor?: string  // 초침
   clockBgColor?: string      // 배경 ('transparent' = 없음)
+  ttMode?: 'mini' | 'full'   // 시정표 시계: 미니(현재 교시만, 기본) / 전체(오늘 시정 목록)
+  ttShowPersonal?: boolean   // 시정표 시계: 개인 시간표(반·과목) 표시 (기본 true)
+  ttColors?: TimetableColors // 시정표 시계: 배경/진행 바/교시 블록/카운트다운/알림 색 (Whattime 색상 키)
+  ttBellAlert?: boolean      // 시정표 시계: 개인 수업 종료 직전 진행 바 색 변화
+  ttBellSeconds?: number     // 시정표 시계: 종료 알림 시작 시점 (초, 기본 5)
   qrUrl?: string
   qrTitle?: string
 }
@@ -80,7 +81,6 @@ interface MultiResizeOp  { kind: 'multiresize';  ids: string[]; sx: number; sy: 
 type ActiveOp = DragOp | ResizeOp | RotateOp | MultiDragOp | MarqueeOp | MultiResizeOp
 
 const DEFAULT_DATA: DailyData = { elements: [], bg: '#FFF8F0' }
-const fontDataUrlCache = new Map<string, string | null>()
 
 const BG_COLORS = ['#FFF8F0','#FDE8F0','#E8F4E8','#E8F0FF','#FFF4E8','#F0F8FF','#FFFFFF','#F5F5F5']
 
@@ -209,9 +209,9 @@ function makeEl(type: CanvasEl['type'], x: number, y: number, content: string, m
   if (type === 'sticker') return { ...base, w: 80, h: 80 }
   if (type === 'photo')   return { ...base, w: 180, h: 180 }
   if (type === 'video')    return { ...base, w: 480, h: 270 }
-  if (type === 'markdown') return { ...base, w: 280, h: 160, bgOpacity: 80 }
   if (type === 'analogClock') return { ...base, w: 210, h: 210, content: 'analog-clock', bgColor: '#ffffff', bgOpacity: 100, textRadius: 18 }
   if (type === 'digitalClock') return { ...base, w: 260, h: 92, content: 'digital-clock', bgColor: '#ffffff', bgOpacity: 100, textRadius: 18 }
+  if (type === 'timetableClock') return { ...base, w: 300, h: 130, content: 'timetable-clock' }
   if (type === 'qr') return { ...base, w: 240, h: 240 }
   return base
 }
@@ -240,117 +240,6 @@ function rrect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h
 function photoRadiusPx(w: number, h: number, radius = 0): number {
   const pct = Math.max(0, Math.min(50, radius))
   return Math.round(Math.min(w, h) * pct / 100)
-}
-
-function primaryFontFamily(fontFamily: string): string {
-  return fontFamily.split(',')[0]?.replace(/^['"]|['"]$/g, '').trim() || 'sans-serif'
-}
-
-function canvasTextFont(el: CanvasEl): string {
-  const primary = primaryFontFamily(el.fontFamily)
-  const fallback = el.fontFamily.includes(',') ? `,${el.fontFamily.split(',').slice(1).join(',')}` : ', sans-serif'
-  return `${el.italic ? 'italic ' : ''}${el.bold ? 'bold ' : ''}${el.fontSize}px "${primary}"${fallback}`
-}
-
-function cssEscapeString(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-}
-
-async function ensureEmbeddedFontFaces(elements: CanvasEl[]): Promise<HTMLStyleElement | null> {
-  const names = Array.from(new Set(
-    elements
-      .filter(el => el.type === 'text')
-      .map(el => primaryFontFamily(el.fontFamily))
-      .filter(Boolean)
-  ))
-  if (names.length === 0) return null
-  const entries = await Promise.all(names.map(async name => {
-    if (!fontDataUrlCache.has(name)) {
-      const dataUrl = await api.fonts.dataUrl(name).catch(() => null)
-      fontDataUrlCache.set(name, dataUrl)
-    }
-    return [name, fontDataUrlCache.get(name)] as const
-  }))
-  const style = document.createElement('style')
-  style.textContent = entries.map(([name, dataUrl]) => {
-    const safe = cssEscapeString(name)
-    const src = dataUrl ? `url("${dataUrl}")` : `local("${safe}")`
-    return `@font-face{font-family:"${safe}";src:${src};font-display:block;}`
-  }).join('\n')
-  document.head.appendChild(style)
-  return style
-}
-
-async function ensureCanvasFonts(elements: CanvasEl[]) {
-  const fonts = 'fonts' in document ? document.fonts : undefined
-  const textEls = elements.filter(el => el.type === 'text')
-  const preloadEls = textEls.map(el => {
-    const div = document.createElement('div')
-    div.style.cssText = `font-family:${el.fontFamily};font-size:${Math.max(72, el.fontSize)}px;font-weight:${el.bold ? 'bold' : 'normal'};font-style:${el.italic ? 'italic' : 'normal'};position:fixed;top:0;left:0;width:1px;height:1px;overflow:hidden;opacity:0.01;pointer-events:none;z-index:-9999;`
-    div.textContent = `${el.content || '가나다라마바사ABCDEFGabcdefg0123456789'}`
-    document.body.appendChild(div)
-    void div.offsetWidth
-    return div
-  })
-  if (fonts) {
-    await Promise.all(textEls.map(el => fonts.load(canvasTextFont(el)).catch(() => [])))
-    await fonts.ready
-  }
-  await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 50))))
-  preloadEls.forEach(el => { try { document.body.removeChild(el) } catch {} })
-}
-
-async function renderTextElementPng(el: CanvasEl): Promise<string> {
-  const pad = el.textPadding ?? 6
-  const bw = el.borderWidth ?? 0
-  const textRad = el.textRadius ?? 0
-  const justifyV = el.alignV === 'middle' ? 'center' : el.alignV === 'bottom' ? 'flex-end' : 'flex-start'
-  const box = document.createElement('div')
-  box.style.cssText = [
-    `position:fixed`,
-    `left:0`,
-    `top:0`,
-    `width:${el.w}px`,
-    `height:${el.h}px`,
-    `display:flex`,
-    `flex-direction:column`,
-    `justify-content:${justifyV}`,
-    `background:${hexToRgba(el.bgColor, el.bgOpacity)}`,
-    `padding:${pad}px`,
-    `border-radius:${textRad}px`,
-    `border:${bw > 0 ? `${bw}px solid ${el.borderColor ?? '#333333'}` : 'none'}`,
-    `box-sizing:border-box`,
-    `overflow:hidden`,
-    `pointer-events:none`,
-    `z-index:-1`,
-  ].join(';')
-
-  const text = document.createElement('div')
-  text.textContent = el.content
-  text.style.cssText = [
-    `font-size:${el.fontSize}px`,
-    `color:${el.color}`,
-    `font-weight:${el.bold ? 'bold' : 'normal'}`,
-    `font-style:${el.italic ? 'italic' : 'normal'}`,
-    `text-decoration:${[el.underline && 'underline', el.strikethrough && 'line-through'].filter(Boolean).join(' ') || 'none'}`,
-    `letter-spacing:${el.letterSpacing ?? 0}px`,
-    `line-height:${el.lineHeight ?? 1.4}`,
-    `font-family:${el.fontFamily}`,
-    `text-align:${el.align}`,
-    `white-space:pre-wrap`,
-    `word-break:break-word`,
-    `transform:${(el.scaleX ?? 100) !== 100 ? `scaleX(${(el.scaleX ?? 100) / 100})` : 'none'}`,
-    `transform-origin:${el.align === 'center' ? 'center top' : el.align === 'right' ? 'right top' : 'left top'}`,
-  ].join(';')
-
-  box.appendChild(text)
-  document.body.appendChild(box)
-  try {
-    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
-    return await toPng(box, { pixelRatio: 2 })
-  } finally {
-    try { document.body.removeChild(box) } catch {}
-  }
 }
 
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] {
@@ -502,64 +391,6 @@ async function drawTweetCard(cardData: Record<string, string>, w: number): Promi
   return { dataUrl: canvas.toDataURL('image/png'), h }
 }
 
-function TweetCard({ data, w, h }: { data: Record<string, string>; w: number; h: number }) {
-  const [avatarError, setAvatarError] = useState(false)
-  const [mediaError, setMediaError] = useState(false)
-  const fontSize = Math.max(10, Math.min(14, w / 22))
-  const avatarSize = Math.round(w * 0.11)
-  const pad = Math.round(w * 0.05)
-
-  const avatarSrc = data.profileImageUrl || `https://unavatar.io/twitter/${(data.authorHandle ?? '').replace('@', '')}`
-
-  return (
-    <div style={{
-      width: '100%', height: '100%', boxSizing: 'border-box',
-      background: '#fff', borderRadius: 16, border: '1px solid #e1e8ed',
-      padding: `${Math.round(w * 0.04)}px ${pad}px`,
-      display: 'flex', flexDirection: 'column', gap: Math.round(h * 0.03),
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-      overflow: 'hidden',
-    }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-        <div style={{ width: avatarSize, height: avatarSize, borderRadius: '50%', flexShrink: 0, overflow: 'hidden', background: '#1D9BF0' }}>
-          {!avatarError ? (
-            <img src={avatarSrc} onError={() => setAvatarError(true)}
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-          ) : (
-            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: Math.round(avatarSize * 0.42) }}>
-              {(data.authorName?.[0] ?? 'X').toUpperCase()}
-            </div>
-          )}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: fontSize + 1, fontWeight: 700, color: '#0f1419', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{data.authorName}</div>
-          <div style={{ fontSize: fontSize - 1, color: '#536471' }}>{data.authorHandle}</div>
-        </div>
-        <div style={{ fontSize: Math.round(w * 0.06), color: '#0f1419', fontWeight: 900, flexShrink: 0, lineHeight: 1 }}>𝕏</div>
-      </div>
-
-      {/* Tweet text */}
-      <div style={{ fontSize, color: '#0f1419', lineHeight: 1.55, overflow: 'hidden', wordBreak: 'break-word', flex: data.mediaImageUrl && !mediaError ? '0 0 auto' : 1 }}>
-        {data.tweetText ?? data.text}
-      </div>
-
-      {/* 첨부 이미지 */}
-      {data.mediaImageUrl && !mediaError && (
-        <div style={{ flex: 1, borderRadius: 10, overflow: 'hidden', minHeight: 0, flexShrink: 0 }}>
-          <img src={data.mediaImageUrl} onError={() => setMediaError(true)}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-        </div>
-      )}
-
-      {/* Footer */}
-      <div style={{ borderTop: '1px solid #eff3f4', paddingTop: Math.round(h * 0.025), display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-        <span style={{ fontSize: fontSize - 2, color: '#536471' }}>{data.date}</span>
-        {data.likes && <span style={{ fontSize: fontSize - 2, color: '#536471' }}>♥ {data.likes}</span>}
-      </div>
-    </div>
-  )
-}
 
 const FONT_SIZES = [6, 7, 8, 9, 10, 12, 15, 18, 22, 25, 28, 30, 34, 38, 42, 48, 54, 60, 70, 80, 90, 100]
 
@@ -628,14 +459,17 @@ function InteractiveOverlay({ url, cmdHeld }: { url: string; cmdHeld: boolean })
   )
 }
 
-export default function DailyView({ currentDate, onPrev, onNext, onToday, boardKey, boardTitle, systemFonts, globalFont, diaryName, studentLists }: Props): JSX.Element {
-  const dateStr = boardKey ?? toLocalDate(currentDate)
+export default function DailyView({ boardKey, boardTitle, systemFonts, studentLists }: Props): JSX.Element {
+  const dateStr = boardKey
   const [data, setData] = useState<DailyData>(DEFAULT_DATA)
   const [saved, setSaved] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [multiIds, setMultiIds] = useState<string[]>([])
   const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const editorRef = useRef<RichTextEditorHandle>(null)
+  const [textSel, setTextSel] = useState<{ start: number; end: number } | null>(null)
+  const textToolbarRef = useRef<HTMLDivElement>(null)
   const [showStickers, setShowStickers] = useState(false)
   const [showVideoMenu, setShowVideoMenu] = useState(false)
   const [showClockMenu, setShowClockMenu] = useState(false)
@@ -662,14 +496,12 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
   const dockHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [showVideoUrlInput, setShowVideoUrlInput] = useState(false)
   const [videoUrlInput, setVideoUrlInput] = useState('')
-  const mdTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const [cmdHeld, setCmdHeld] = useState(false)
   const [cropTarget, setCropTarget] = useState<string | null>(null)
   const [fontSearch, setFontSearch] = useState('')
   const [showFontList, setShowFontList] = useState(false)
   const [showFontSizeList, setShowFontSizeList] = useState(false)
   const [customShapes, setCustomShapes] = useState<CustomShape[]>([])
-  const [tweetMsg, setTweetMsg] = useState<{text: string; type: 'info'|'error'} | null>(null)
 
   // Background inputs
   const [bgHexInput, setBgHexInput] = useState(DEFAULT_DATA.bg)
@@ -688,15 +520,15 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
   const justMarqueedRef  = useRef(false)
   const elClipboardRef   = useRef<CanvasEl[]>([])
   const persistRef    = useRef<(d: DailyData) => Promise<void>>(() => Promise.resolve())
-  const exportRef     = useRef<() => Promise<void>>(() => Promise.resolve())
-  const [exportPreview, setExportPreview] = useState<{ dataUrl: string; filename: string } | null>(null)
-  const [capturing, setCapturing] = useState<boolean | null>(null)
   const [clockTime, setClockTime] = useState(() => new Date())
+  const [timetable, setTimetable] = useState<TimetableSchedule | null>(null)
+  const [showTimetableEditor, setShowTimetableEditor] = useState(false)
+  const [ttColorPanelId, setTtColorPanelId] = useState<string | null>(null)
   const [youtubePort, setYoutubePort] = useState(0)
   const historyRef    = useRef<DailyData[]>([])
   const historyIdxRef = useRef(-1)
 
-  const dateLabel = boardTitle ?? currentDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
+  const dateLabel = boardTitle
 
   const showDock = useCallback(() => {
     if (dockHideTimerRef.current) clearTimeout(dockHideTimerRef.current)
@@ -724,6 +556,25 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
   useEffect(() => {
     const timer = window.setInterval(() => setClockTime(new Date()), 1000)
     return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    // 저장된 시정표 로드. Whattime에서 가져온 시정표는 Whattime 쪽 최신 내용으로 자동 갱신
+    api.settings.get('timetableSchedule').then(async stored => {
+      let schedule: TimetableSchedule | null = null
+      if (stored) { try { schedule = JSON.parse(stored) as TimetableSchedule } catch {} }
+      if (schedule?.source === 'whattime') {
+        const raw = await api.whattime.readInstalled().catch(() => null)
+        if (raw) {
+          try {
+            const fresh = parseWhattimeSchedule(raw, 'whattime')
+            api.settings.set('timetableSchedule', JSON.stringify(fresh)).catch(() => {})
+            schedule = fresh
+          } catch {}
+        }
+      }
+      setTimetable(schedule)
+    }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -812,6 +663,65 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
     const next = { ...dataRef.current, elements: dataRef.current.elements.map(el => el.id === id ? { ...el, ...patch } : el) }
     setData(next); persist(next)
   }, [persist])
+
+  // ── 텍스트 글자별 서식 ─────────────────────────────────────────────────────
+  const prevEditingRef = useRef<string | null>(null)
+  useEffect(() => {
+    // 편집이 끝나면(포커스 이동, 캔버스 클릭, 다른 요소 선택 등 어떤 경로든) 저장. 빈 텍스트 박스는 삭제
+    const prev = prevEditingRef.current
+    prevEditingRef.current = editingId
+    if (!prev || prev === editingId) return
+    setTextSel(null)
+    const current = dataRef.current
+    const target = current.elements.find(x => x.id === prev)
+    if (!target || target.type !== 'text') return
+    if (target.content.trim() === '') {
+      const next = { ...current, elements: current.elements.filter(x => x.id !== prev) }
+      setData(next); persist(next); setSelectedId(id => id === prev ? null : id)
+    } else {
+      persist(current)
+    }
+  }, [editingId, persist])
+
+  useEffect(() => {
+    if (editingId && selectedId !== editingId) setEditingId(null)
+  }, [selectedId, editingId])
+
+  useEffect(() => {
+    const el = dataRef.current.elements.find(x => x.id === selectedId)
+    if (!el || el.type !== 'text') return
+    if (editingId === el.id && textSel && textSel.end > textSel.start) setTextColorInput(rangeStyle(runsOf(el), textSel.start, textSel.end, el).color ?? '')
+    else setTextColorInput(el.color)
+  }, [textSel, selectedId, editingId])
+
+  const setTextRuns = (id: string, runs: TextRun[] | undefined, text: string, patch: Partial<CanvasEl> = {}) => {
+    setData(prev => ({ ...prev, elements: prev.elements.map(x => x.id === id ? { ...x, ...patch, runs, content: text } : x) }))
+  }
+
+  /** 서식 적용: 편집 중 글자를 선택했으면 그 글자에만, 아니면 박스 전체 기본값을 바꾸고 해당 속성의 글자별 서식은 초기화 */
+  const applyTextStyle = (el: CanvasEl, patch: RunStyle, opts: { refocus?: boolean } = {}) => {
+    const editor = editingId === el.id ? editorRef.current : null
+    const refocus = opts.refocus ?? true
+    if (editor) {
+      const sel = editor.getSelection()
+      const raw = editor.readRuns()
+      const text = plainText(raw)
+      const current = normalizeRuns(raw, el) ?? [{ text }]
+      if (sel.end > sel.start) {
+        const runs = normalizeRuns(applyStyleToRange(current, sel.start, sel.end, patch), el)
+        editor.setRuns(runs ?? [{ text }], el, { selection: sel, focus: refocus })
+        setTextRuns(el.id, runs, text)
+      } else {
+        const nextEl = { ...el, ...patch }
+        const runs = normalizeRuns(clearStyleKeys(current, Object.keys(patch) as (keyof RunStyle)[]), nextEl)
+        editor.setRuns(runs ?? [{ text }], nextEl, { selection: sel, focus: refocus })
+        setTextRuns(el.id, runs, text, patch)
+      }
+      return
+    }
+    const nextEl = { ...el, ...patch }
+    updateEl(el.id, { ...patch, runs: normalizeRuns(clearStyleKeys(runsOf(el), Object.keys(patch) as (keyof RunStyle)[]), nextEl) })
+  }
 
   const deleteSelected = useCallback(() => {
     if (multiIds.length > 1) {
@@ -909,205 +819,6 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
     setSelectedId(newEl.id)
   }
 
-  const buildExportDataUrl = useCallback(async (): Promise<string> => {
-    const canvasEl = canvasRef.current
-    if (!canvasEl) return ''
-    const W = canvasEl.clientWidth
-    const H = canvasEl.clientHeight
-    const dpr = 2
-    const offscreen = document.createElement('canvas')
-    offscreen.width = W * dpr; offscreen.height = H * dpr
-    const ctx = offscreen.getContext('2d')!
-    ctx.scale(dpr, dpr)
-    const d = dataRef.current
-    const localFontFaces = await ensureEmbeddedFontFaces(d.elements)
-    try {
-      await ensureCanvasFonts(d.elements)
-      ctx.fillStyle = d.bg; ctx.fillRect(0, 0, W, H)
-      if (d.bgImage) {
-        try {
-          const img = await loadImg(d.bgImage)
-          const rot = d.bgImageRotation ?? 0
-          const userScale = d.bgImageScale ?? 1
-          const isCover = d.bgImageFit === 'cover'
-          let dw = img.naturalWidth
-          let dh = img.naturalHeight
-          if (isCover) {
-            const is90or270 = rot === 90 || rot === 270
-            const targetW = is90or270 ? H : W
-            const targetH = is90or270 ? W : H
-            const ir = img.naturalWidth / img.naturalHeight
-            const tr = targetW / targetH
-            if (ir > tr) { dh = targetH; dw = targetH * ir }
-            else { dw = targetW; dh = targetW / ir }
-          }
-          dw *= userScale; dh *= userScale
-          ctx.save()
-          ctx.translate(W / 2, H / 2)
-          ctx.rotate((rot * Math.PI) / 180)
-          ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh)
-          ctx.restore()
-        } catch {}
-      }
-      for (const el of [...d.elements].sort((a, b) => a.z - b.z)) {
-      if (el.type === 'video') continue
-      ctx.save()
-      ctx.globalAlpha = el.opacity / 100
-      ctx.translate(el.x + el.w / 2, el.y + el.h / 2)
-      ctx.rotate((el.rotation * Math.PI) / 180)
-      ctx.scale(el.flipH ? -1 : 1, el.flipV ? -1 : 1)
-      ctx.translate(-el.w / 2, -el.h / 2)
-      if (el.type === 'text') {
-        let renderedByDom = false
-        try {
-          const textPng = await renderTextElementPng(el)
-          const textImg = await loadImg(textPng)
-          ctx.drawImage(textImg, 0, 0, el.w, el.h)
-          renderedByDom = true
-        } catch {}
-        if (!renderedByDom) {
-        if (el.bgOpacity > 0) {
-          ctx.fillStyle = hexToRgba(el.bgColor, el.bgOpacity)
-          const rad = el.textRadius ?? 0
-          if (rad > 0) { rrect(ctx, 0, 0, el.w, el.h, rad); ctx.fill() }
-          else { ctx.fillRect(0, 0, el.w, el.h) }
-        }
-        const bw = el.borderWidth ?? 0
-        if (bw > 0) {
-          ctx.strokeStyle = el.borderColor ?? '#333333'; ctx.lineWidth = bw
-          const rad = el.textRadius ?? 0
-          if (rad > 0) { rrect(ctx, 0, 0, el.w, el.h, rad) }
-          else { ctx.beginPath(); ctx.rect(0, 0, el.w, el.h) }
-          ctx.stroke()
-        }
-        const pad = el.textPadding ?? 6, fs = el.fontSize
-        const lh = fs * (el.lineHeight ?? 1.4)
-        const sx = (el.scaleX ?? 100) / 100
-        ctx.font = canvasTextFont(el)
-        ;(ctx as any).letterSpacing = `${el.letterSpacing ?? 0}px`
-        ctx.fillStyle = el.color; ctx.textBaseline = 'top'
-        ctx.textAlign = el.align as CanvasTextAlign
-        const textX = el.align === 'left' ? pad : el.align === 'center' ? el.w / 2 : el.w - pad
-        if (sx !== 1) ctx.transform(sx, 0, 0, 1, textX * (1 - sx), 0)
-        const maxW = el.w - pad * 2
-        const effectiveMaxW = maxW / sx
-        const allLines: string[] = []
-        for (const para of el.content.split('\n')) {
-          if (!para) { allLines.push(''); continue }
-          const words = para.split(' '); let cur = ''
-          for (const word of words) {
-            const test = cur ? cur + ' ' + word : word
-            if (ctx.measureText(test).width > effectiveMaxW && cur) { allLines.push(cur); cur = word }
-            else { cur = test }
-          }
-          allLines.push(cur)
-        }
-        const totalH = allLines.length * lh
-        const startY = el.alignV === 'top' ? pad : el.alignV === 'middle' ? (el.h - totalH) / 2 : el.h - totalH - pad
-        allLines.forEach((line, i) => {
-          const y = startY + i * lh
-          ctx.fillText(line, textX, y)
-          if (el.underline || el.strikethrough) {
-            const lw2 = ctx.measureText(line).width
-            const lineStartX = el.align === 'left' ? textX : el.align === 'center' ? textX - lw2 / 2 : textX - lw2
-            ctx.save()
-            ctx.strokeStyle = el.color
-            ctx.lineWidth = Math.max(1, fs * 0.06)
-            if (el.underline) { ctx.beginPath(); ctx.moveTo(lineStartX, y + fs * 1.08); ctx.lineTo(lineStartX + lw2, y + fs * 1.08); ctx.stroke() }
-            if (el.strikethrough) { ctx.beginPath(); ctx.moveTo(lineStartX, y + fs * 0.5); ctx.lineTo(lineStartX + lw2, y + fs * 0.5); ctx.stroke() }
-            ctx.restore()
-          }
-        })
-        }
-      } else if (el.type === 'sticker' || el.type === 'photo') {
-        try {
-          const img = await loadImg(el.content)
-          ctx.save()
-          if (el.type === 'photo') {
-            if (el.clipShape === 'circle') {
-              ctx.beginPath(); ctx.arc(el.w / 2, el.h / 2, Math.min(el.w, el.h) / 2, 0, Math.PI * 2); ctx.clip()
-            } else if (el.clipShape === 'diamond') {
-              ctx.beginPath(); ctx.moveTo(el.w/2,0); ctx.lineTo(el.w,el.h/2); ctx.lineTo(el.w/2,el.h); ctx.lineTo(0,el.h/2); ctx.closePath(); ctx.clip()
-            } else if (el.clipShape === 'hexagon') {
-              const pts: [number,number][] = [[.25,0],[.75,0],[1,.5],[.75,1],[.25,1],[0,.5]]
-              ctx.beginPath(); pts.forEach(([x,y],i) => i===0 ? ctx.moveTo(x*el.w,y*el.h) : ctx.lineTo(x*el.w,y*el.h)); ctx.closePath(); ctx.clip()
-            } else if (el.clipShape === 'heart') {
-              ctx.beginPath()
-              ctx.moveTo(el.w*.5,el.h*.3)
-              ctx.bezierCurveTo(el.w*.5,el.h*.1,el.w*.75,el.h*.05,el.w*.875,el.h*.2)
-              ctx.bezierCurveTo(el.w,el.h*.35,el.w,el.h*.6,el.w*.875,el.h*.75)
-              ctx.lineTo(el.w*.5,el.h); ctx.lineTo(el.w*.125,el.h*.75)
-              ctx.bezierCurveTo(0,el.h*.6,0,el.h*.35,el.w*.125,el.h*.2)
-              ctx.bezierCurveTo(el.w*.25,el.h*.05,el.w*.5,el.h*.1,el.w*.5,el.h*.3)
-              ctx.closePath(); ctx.clip()
-            } else if (el.clipShape === 'star') {
-              const pts: [number,number][] = [[.5,0],[.61,.35],[.98,.35],[.68,.57],[.79,.91],[.5,.70],[.21,.91],[.32,.57],[.02,.35],[.39,.35]]
-              ctx.beginPath(); pts.forEach(([x,y],i) => i===0 ? ctx.moveTo(x*el.w,y*el.h) : ctx.lineTo(x*el.w,y*el.h)); ctx.closePath(); ctx.clip()
-            } else if (el.clipShape === 'none' && (el.photoRadius ?? 0) > 0) {
-              const r = photoRadiusPx(el.w, el.h, el.photoRadius)
-              rrect(ctx, 0, 0, el.w, el.h, r); ctx.clip()
-            } else if (el.clipShape.startsWith('custom_')) {
-              const cs = customShapes.find(c => c.id === el.clipShape)
-              if (cs?.points) {
-                const cpts = cs.points.split(' ').map(p => { const [x,y] = p.split(',').map(Number); return [x*el.w, y*el.h] as [number,number] })
-                ctx.beginPath(); cpts.forEach(([x,y],i) => i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y)); ctx.closePath(); ctx.clip()
-              }
-            }
-          }
-          ctx.drawImage(img, 0, 0, el.w, el.h)
-          ctx.restore()
-        } catch {}
-      }
-      ctx.restore()
-      }
-      return offscreen.toDataURL('image/png')
-    } finally {
-      if (localFontFaces) {
-        try { document.head.removeChild(localFontFaces) } catch {}
-      }
-    }
-  }, [customShapes])
-
-  const buildCaptureDataUrl = useCallback(async (): Promise<string> => {
-    const canvasEl = canvasRef.current
-    if (!canvasEl) return ''
-    setCapturing(true)
-    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
-    const rect = canvasEl.getBoundingClientRect()
-    try {
-      const b64 = await api.export.captureRegionB64({ x: rect.left, y: rect.top, w: rect.width, h: rect.height })
-      return `data:image/png;base64,${b64}`
-    } finally {
-      setCapturing(null)
-    }
-  }, [])
-
-  const exportToPNG = useCallback(async () => {
-    const dataUrl = await buildCaptureDataUrl().catch(() => buildExportDataUrl())
-    if (!dataUrl) return
-    const now = new Date()
-    const yy  = String(now.getFullYear()).slice(2)
-    const mm  = String(now.getMonth() + 1).padStart(2, '0')
-    const dd  = String(now.getDate()).padStart(2, '0')
-    const hh  = String(now.getHours()).padStart(2, '0')
-    const min = String(now.getMinutes()).padStart(2, '0')
-    const safeName = (diaryName || 'PanDeckI').replace(/\s+/g, '_')
-    const filename = `${safeName}_${yy}${mm}${dd}_${hh}${min}.png`
-    setExportPreview({ dataUrl, filename })
-  }, [buildCaptureDataUrl, buildExportDataUrl, diaryName])
-  exportRef.current = exportToPNG
-
-  useEffect(() => {
-    const onManualSave = () => { persistRef.current(dataRef.current) }
-    const onExportPng  = () => { exportRef.current().catch((e: unknown) => console.error('export failed', e)) }
-    window.addEventListener('diary-manual-save', onManualSave)
-    window.addEventListener('diary-export-png',  onExportPng)
-    return () => {
-      window.removeEventListener('diary-manual-save', onManualSave)
-      window.removeEventListener('diary-export-png',  onExportPng)
-    }
-  }, [])
-
   const saveBgCustomColors = (colors: string[]) => {
     api.settings.set('bgCustomColors', JSON.stringify(colors)).catch(() => {})
   }
@@ -1203,7 +914,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return
       if (e.key === 'Backspace' && (selectedId || multiIds.length > 1) && editingId !== selectedId) {
         e.preventDefault(); deleteSelected()
       } else if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
@@ -1264,7 +975,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
       const tag = (e.target as HTMLElement).tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return
       const items = Array.from(e.clipboardData?.items ?? [])
       const c = canvasRef.current
       for (const item of items) {
@@ -1578,7 +1289,6 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
   }
 
   const maxZ = data.elements.reduce((m, el) => Math.max(m, el.z), 0)
-  const minZ = data.elements.reduce((m, el) => Math.min(m, el.z), 0)
 
   const addText = () => {
     const el = makeEl('text', 60, 60, '텍스트를 입력하세요', maxZ)
@@ -1653,10 +1363,21 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
     setShowVideoMenu(false)
   }
 
-  const addClock = (type: 'analogClock' | 'digitalClock') => {
+  const saveTimetable = (schedule: TimetableSchedule) => {
+    setTimetable(schedule)
+    api.settings.set('timetableSchedule', JSON.stringify(schedule)).catch(() => {})
+  }
+
+  const addClock = (type: 'analogClock' | 'digitalClock' | 'timetableClock') => {
+    if (type === 'timetableClock' && !timetable) {
+      // 시정표가 아직 없으면 설치된 Whattime에서 조용히 가져오기 시도
+      api.whattime.readInstalled().then(raw => {
+        if (raw) saveTimetable(parseWhattimeSchedule(raw, 'whattime'))
+      }).catch(() => {})
+    }
     const c = canvasRef.current
-    const w = type === 'analogClock' ? 210 : 260
-    const h = type === 'analogClock' ? 210 : 92
+    const w = type === 'analogClock' ? 210 : type === 'timetableClock' ? 300 : 260
+    const h = type === 'analogClock' ? 210 : type === 'timetableClock' ? 130 : 92
     const cx = c ? c.clientWidth / 2 - w / 2 : 100
     const cy = c ? c.clientHeight / 2 - h / 2 : 100
     const mz = dataRef.current.elements.reduce((m, el) => Math.max(m, el.z), 0)
@@ -1754,10 +1475,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
         onClick={e => e.stopPropagation()}>
 
         <div className="flex items-center gap-1.5 shrink-0">
-          {!boardKey && <button onClick={onPrev} className="text-sm px-1.5 hover:opacity-70" style={{ color: 'var(--color-primary-dark)' }}>‹</button>}
           <strong className="text-xs whitespace-nowrap" style={{ color: 'var(--color-text-muted)', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>{dateLabel}</strong>
-          {!boardKey && <button onClick={onToday} className="text-xs px-1.5 rounded-full hover:opacity-70" style={{ color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary-dark)' }}>오늘</button>}
-          {!boardKey && <button onClick={onNext} className="text-sm px-1.5 hover:opacity-70" style={{ color: 'var(--color-primary-dark)' }}>›</button>}
           {saved && <span className="text-xs whitespace-nowrap" style={{ color: 'var(--color-primary-dark)' }}>저장됨 ✓</span>}
         </div>
         <div className="w-px self-stretch mx-0.5" style={{ background: 'var(--color-border)' }} />
@@ -1845,6 +1563,10 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
               <button onClick={() => addClock('digitalClock')} className="clock-add-option">
                 <span className="clock-option-preview digital">12:34:56</span>
                 <strong>디지털</strong>
+              </button>
+              <button onClick={() => addClock('timetableClock')} className="clock-add-option">
+                <span className="clock-option-preview timetable"><span /><span /><span /></span>
+                <strong>시정표</strong>
               </button>
             </div>
           )}
@@ -2051,7 +1773,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
               style={{
                 position: 'absolute', left: el.x, top: el.y, width: el.w, height: el.h, zIndex: el.z,
                 transform: `rotate(${el.rotation}deg) scaleX(${el.flipH ? -1 : 1}) scaleY(${el.flipV ? -1 : 1})`,
-                outline: capturing === null && (isSel || multiIds.includes(el.id)) ? '2px solid var(--color-primary-dark)' : '2px solid transparent',
+                outline: (isSel || multiIds.includes(el.id)) ? '2px solid var(--color-primary-dark)' : '2px solid transparent',
                 outlineOffset: 2,
                 cursor: isEdit ? 'default' : el.locked ? 'default' : 'move',
               }}
@@ -2062,10 +1784,9 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
                   setSelectedId(el.id)
                   setEditingId(el.id)
                   if (el.content === '텍스트를 입력하세요') {
-                    setData(prev => ({ ...prev, elements: prev.elements.map(x => x.id === el.id ? { ...x, content: '' } : x) }))
+                    setData(prev => ({ ...prev, elements: prev.elements.map(x => x.id === el.id ? { ...x, content: '', runs: undefined } : x) }))
                   }
                 }
-                if (el.type === 'markdown') { setSelectedId(el.id); setEditingId(el.id) }
                 if (el.type === 'qr') { setQrEditId(el.id); setQrEditUrl(el.qrUrl ?? ''); setQrEditTitle(el.qrTitle ?? '') }
               }}
               onClick={e => e.stopPropagation()}>
@@ -2074,42 +1795,34 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
                 width: '100%', height: '100%', opacity: el.opacity / 100,
                 position: 'relative',
                 ...clipStyle,
-                overflow: (el.type === 'photo' || el.type === 'qr' || (el.type === 'text' && textRad > 0) || el.type === 'markdown') ? 'hidden' : undefined,
+                overflow: (el.type === 'photo' || el.type === 'qr' || (el.type === 'text' && textRad > 0)) ? 'hidden' : undefined,
                 borderRadius: el.type === 'photo'
                   ? (el.clipShape === 'none' ? `${photoRadiusPx(el.w, el.h, el.photoRadius)}px` : 0)
                   : el.type === 'qr' ? 10
-                  : (el.type === 'text' || el.type === 'markdown') ? `${textRad}px` : 0,
+                  : el.type === 'text' ? `${textRad}px` : 0,
               }}>
                 {el.type === 'text' && (
                   isEdit ? (
-                    <textarea autoFocus onFocus={e => { const t = e.target; setTimeout(() => t.select(), 0) }} value={el.content}
-                      onChange={e2 => setData(prev => ({ ...prev, elements: prev.elements.map(x => x.id === el.id ? { ...x, content: e2.target.value } : x) }))}
-                      onBlur={() => {
-                        setEditingId(null)
-                        const current = dataRef.current
-                        const target = current.elements.find(x => x.id === el.id)
-                        if (target && target.content.trim() === '') {
-                          const next = { ...current, elements: current.elements.filter(x => x.id !== el.id) }
-                          setData(next); persist(next); setSelectedId(null)
-                        } else {
-                          persist(current)
-                        }
+                    <RichTextEditor ref={editorRef} initialRuns={runsOf(el)} defaults={el}
+                      onInput={runs => setTextRuns(el.id, normalizeRuns(runs, el), plainText(runs))}
+                      onSelectionChange={setTextSel}
+                      onBlur={e2 => {
+                        // 툴바(글자 크기 입력, 색 선택 등)로 포커스가 옮겨가면 편집 유지
+                        if (textToolbarRef.current?.contains(e2.relatedTarget as Node | null)) return
+                        setEditingId(id => id === el.id ? null : id)
                       }}
-                      onClick={e2 => e2.stopPropagation()}
-                      onPointerDown={e2 => e2.stopPropagation()}
                       style={{
-                        width: '100%', height: '100%', resize: 'none', outline: 'none',
+                        width: '100%', height: '100%', outline: 'none', overflow: 'auto',
                         fontSize: `${el.fontSize}px`,
                         color: el.color,
                         fontWeight: el.bold ? 'bold' : 'normal', fontStyle: el.italic ? 'italic' : 'normal',
-                        textDecoration: [el.underline && 'underline', el.strikethrough && 'line-through'].filter(Boolean).join(' ') || 'none',
                         letterSpacing: `${el.letterSpacing ?? 0}px`,
                         lineHeight: el.lineHeight ?? 1.4,
                         fontFamily: el.fontFamily,
                         background: el.bgOpacity > 0 ? hexToRgba(el.bgColor, el.bgOpacity) : 'rgba(255,255,255,0.75)',
                         border: bw > 0 ? `${bw}px solid ${el.borderColor ?? '#333333'}` : 'none',
                         padding: el.textPadding ?? 6, borderRadius: textRad,
-                        textAlign: el.align, cursor: 'text', userSelect: 'text',
+                        textAlign: el.align, cursor: 'text', userSelect: 'text', WebkitUserSelect: 'text',
                         boxSizing: 'border-box',
                       }} />
                   ) : (
@@ -2125,47 +1838,13 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
                         fontSize: `${el.fontSize}px`,
                         color: el.color,
                         fontWeight: el.bold ? 'bold' : 'normal', fontStyle: el.italic ? 'italic' : 'normal',
-                        textDecoration: [el.underline && 'underline', el.strikethrough && 'line-through'].filter(Boolean).join(' ') || 'none',
                         letterSpacing: `${el.letterSpacing ?? 0}px`,
                         lineHeight: el.lineHeight ?? 1.4,
                         fontFamily: el.fontFamily,
                         textAlign: el.align, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                         transform: (el.scaleX ?? 100) !== 100 ? `scaleX(${(el.scaleX ?? 100) / 100})` : undefined,
                         transformOrigin: el.align === 'center' ? 'center top' : el.align === 'right' ? 'right top' : 'left top',
-                      }}>{el.content}</div>
-                    </div>
-                  )
-                )}
-
-                {el.type === 'markdown' && (
-                  isEdit ? (
-                    <textarea
-                      autoFocus
-                      ref={node => { mdTextareaRef.current = node }}
-                      value={el.content}
-                      onChange={e2 => setData(prev => ({ ...prev, elements: prev.elements.map(x => x.id === el.id ? { ...x, content: e2.target.value } : x) }))}
-                      onBlur={() => { setEditingId(null); persist(dataRef.current) }}
-                      onClick={e2 => e2.stopPropagation()}
-                      onPointerDown={e2 => e2.stopPropagation()}
-                      style={{
-                        width: '100%', height: '100%', resize: 'none', outline: 'none',
-                        fontSize: 13, fontFamily: 'monospace',
-                        color: 'var(--color-text)',
-                        background: hexToRgba(el.bgColor, el.bgOpacity),
-                        padding: 8, cursor: 'text', userSelect: 'text',
-                        boxSizing: 'border-box', borderRadius: textRad,
-                      }}
-                    />
-                  ) : (
-                    <div className="md-canvas-render" style={{
-                      width: '100%', height: '100%', overflow: 'hidden',
-                      background: hexToRgba(el.bgColor, el.bgOpacity),
-                      padding: 8, boxSizing: 'border-box', borderRadius: textRad,
-                      fontSize: `calc(${el.fontSize}px * var(--font-scale, 1))`,
-                      color: el.color,
-                      fontFamily: el.fontFamily || undefined,
-                    }}>
-                      <ReactMarkdown>{el.content}</ReactMarkdown>
+                      }}><RichTextContent runs={runsOf(el)} defaults={el} /></div>
                     </div>
                   )
                 )}
@@ -2217,10 +1896,16 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
 
                 {el.type === 'digitalClock' && <DigitalClock time={clockTime} />}
 
+                {el.type === 'timetableClock' && (
+                  <TimetableClock time={clockTime} schedule={timetable} width={el.w}
+                    mode={el.ttMode ?? 'mini'} showPersonal={el.ttShowPersonal !== false}
+                    colors={el.ttColors} bellAlert={{ enabled: !!el.ttBellAlert, seconds: el.ttBellSeconds ?? 5 }} />
+                )}
+
                 {interactiveUrl && el.type !== 'video' && <InteractiveOverlay url={interactiveUrl} cmdHeld={cmdHeld} />}
               </div>
 
-              {capturing === null && isSel && !isEdit && (<>
+              {isSel && !isEdit && (<>
                 <div onPointerDown={e => startRotate(e, el.id)} onClick={e => e.stopPropagation()}
                   style={{ position: 'absolute', top: -28, left: '50%', transform: 'translateX(-50%)', width: 20, height: 20, borderRadius: '50%', zIndex: 99, cursor: 'grab', background: 'var(--color-primary-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: '#fff' }}>↻</div>
                 <div onPointerDown={e => startResize(e, el.id)} onClick={e => e.stopPropagation()}
@@ -2264,7 +1949,7 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
         })()}
 
         {/* Marquee selection overlay */}
-        {capturing === null && marqueeRect && (
+        {marqueeRect && (
           <div style={{
             position: 'absolute',
             left: marqueeRect.x, top: marqueeRect.y,
@@ -2395,22 +2080,30 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
         })()}
 
 {/* Inline floating toolbar */}
-        {selectedEl && !editingId && multiIds.length <= 1 && (() => {
+        {selectedEl && selectedEl.type === 'timetableClock' && ttColorPanelId === selectedEl.id && (
+          <TimetableColorPanel colors={selectedEl.ttColors ?? {}} bellAlert={!!selectedEl.ttBellAlert} bellSeconds={selectedEl.ttBellSeconds ?? 5}
+            whattimeColors={timetable?.colors}
+            whattimeBell={timetable?.bell_alert_enabled !== undefined ? { enabled: timetable.bell_alert_enabled, seconds: timetable.bell_alert_seconds ?? 5 } : undefined}
+            onChange={patch => updateEl(selectedEl.id, patch)} onClose={() => setTtColorPanelId(null)} />
+        )}
+
+        {selectedEl && (!editingId || (editingId === selectedEl.id && selectedEl.type === 'text')) && multiIds.length <= 1 && (() => {
           const ch = canvasRef.current?.clientHeight ?? 900
           const cw = canvasRef.current?.clientWidth ?? 1600
           // appZoom이 1 미만이면 툴바도 같이 작아지는 문제를 막기 위해 역스케일 적용
           // canvasRef는 부모의 scale(appZoom) 안에 있으므로 offsetWidth/rect.width = 1/appZoom
+          // 확대(전체화면 등) 시에는 툴바도 캔버스와 같은 비율로 커지도록 역스케일하지 않음
           const rect = canvasRef.current?.getBoundingClientRect()
           const ts = canvasRef.current && rect
-            ? canvasRef.current.offsetWidth / rect.width
+            ? Math.max(1, canvasRef.current.offsetWidth / rect.width)
             : 1  // ts = 1/appZoom
 
-          const TOOLBAR_H = selectedEl.type === 'text' ? 158 : selectedEl.type === 'analogClock' ? 92 : 44
+          const TOOLBAR_H = selectedEl.type === 'text' ? 158 : selectedEl.type === 'analogClock' || selectedEl.type === 'timetableClock' ? 92 : 44
           const TOOLBAR_W = selectedEl.type === 'text'
               ? (IS_WINDOWS ? 510 : 500)
               : selectedEl.type === 'photo'
                 ? (IS_WINDOWS ? 620 : 600)
-                : selectedEl.type === 'analogClock'
+                : selectedEl.type === 'analogClock' || selectedEl.type === 'timetableClock'
                   ? (IS_WINDOWS ? 440 : 430)
                   : (IS_WINDOWS ? 420 : 410)
           const TOOLBAR_PAD_X = 8 * 2 + 2
@@ -2441,9 +2134,20 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
           )
           const vSep = <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--color-border)', flexShrink: 0, margin: '0 1px' }} />
           const hSep = <div style={{ height: 1, background: 'var(--color-border)' }} />
+          // 편집 중 글자를 선택했으면 선택한 글자의 서식, 아니면 박스 기본 서식을 툴바에 표시
+          const textView = selectedEl.type === 'text' && editingId === selectedEl.id && textSel && textSel.end > textSel.start
+            ? rangeStyle(runsOf(selectedEl), textSel.start, textSel.end, selectedEl) : null
+          const shownFontSize = textView ? textView.fontSize : selectedEl.fontSize
+          const isOn = (key: 'bold' | 'italic' | 'underline' | 'strikethrough') => textView ? textView[key] === true : !!selectedEl[key]
+          // 글꼴: 선택 범위가 여러 글꼴이면 null. rangeStyle은 소문자로 정규화된 값을 주므로 첫 글꼴 이름만 비교
+          const primaryFont = (fontFamily: string) => fontFamily.split(',')[0].replace(/["']/g, '').trim()
+          const shownFont = textView ? (textView.fontFamily !== undefined ? primaryFont(textView.fontFamily) : null) : primaryFont(selectedEl.fontFamily)
+          const shownFontLabel = shownFont === null ? '여러 글꼴' : (systemFonts.find(f => f.toLowerCase() === shownFont.toLowerCase()) ?? shownFont)
 
           return (
             <div style={{ position: 'absolute', top, left, zIndex: 100000, background: '#fff', borderRadius: 10, boxShadow: '0 4px 20px rgba(0,0,0,0.15)', border: '1px solid var(--color-border)', padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 4, width: toolbarOuterW, boxSizing: 'border-box', transform: `scale(${ts})`, transformOrigin: 'top left' }}
+              ref={textToolbarRef}
+              onMouseDown={e => { if (editingId && !(e.target as HTMLElement).closest('input, select, textarea')) e.preventDefault() }}
               onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
 
               {selectedEl.type === 'text' && (<>
@@ -2456,12 +2160,12 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
                       <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center' }}>
                         <input
                           type="text" inputMode="numeric"
-                          value={selectedEl.fontSize}
+                          value={shownFontSize ?? ''}
                           onClick={() => setShowFontSizeList(true)}
                           onDoubleClick={e => (e.target as HTMLInputElement).select()}
                           onChange={e => {
                             const val = parseInt(e.target.value, 10)
-                            if (!isNaN(val)) updateEl(selectedEl.id, { fontSize: Math.min(200, Math.max(6, val)) })
+                            if (!isNaN(val)) applyTextStyle(selectedEl, { fontSize: Math.min(200, Math.max(6, val)) }, { refocus: false })
                           }}
                           style={{ width: '100%', height: '100%', border: 'none', outline: 'none', textAlign: 'center', fontSize: 11, padding: '0 8px 0 2px', background: 'transparent' }}
                         />
@@ -2469,11 +2173,11 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
                       <div style={{ borderLeft: '1px solid var(--color-border)', width: 16, position: 'relative', background: '#f9f9f9', overflow: 'hidden' }}>
                         <input
                           type="number" min={6} max={200}
-                          value={selectedEl.fontSize}
+                          value={shownFontSize ?? selectedEl.fontSize}
                           onChange={e => {
-                            const newVal = Number(e.target.value), oldVal = selectedEl.fontSize
-                            if (newVal > oldVal) updateEl(selectedEl.id, { fontSize: FONT_SIZES.find(s => s > oldVal) || 200 })
-                            else if (newVal < oldVal) updateEl(selectedEl.id, { fontSize: [...FONT_SIZES].reverse().find(s => s < oldVal) || 6 })
+                            const newVal = Number(e.target.value), oldVal = shownFontSize ?? selectedEl.fontSize
+                            if (newVal > oldVal) applyTextStyle(selectedEl, { fontSize: FONT_SIZES.find(s => s > oldVal) || 200 }, { refocus: false })
+                            else if (newVal < oldVal) applyTextStyle(selectedEl, { fontSize: [...FONT_SIZES].reverse().find(s => s < oldVal) || 6 }, { refocus: false })
                           }}
                           tabIndex={-1}
                           style={{ position: 'absolute', right: 0, top: 0, width: 40, height: '100%', border: 'none', outline: 'none', background: 'transparent', color: 'transparent', caretColor: 'transparent' }}
@@ -2486,9 +2190,9 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
                         onClick={e => e.stopPropagation()}>
                         <div className="overflow-y-auto">
                           {FONT_SIZES.map(s => (
-                            <button key={s} onClick={() => { updateEl(selectedEl.id, { fontSize: s }); setShowFontSizeList(false) }}
+                            <button key={s} onClick={() => { applyTextStyle(selectedEl, { fontSize: s }); setShowFontSizeList(false) }}
                               className="w-full text-center text-xs px-2 py-1 hover:bg-pink-50"
-                              style={{ background: selectedEl.fontSize === s ? 'var(--color-primary-light)' : undefined, color: selectedEl.fontSize === s ? 'var(--color-primary-dark)' : undefined }}>
+                              style={{ background: shownFontSize === s ? 'var(--color-primary-light)' : undefined, color: shownFontSize === s ? 'var(--color-primary-dark)' : undefined }}>
                               {s}
                             </button>
                           ))}
@@ -2500,8 +2204,8 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
                   <div className="relative" style={{ flexShrink: 0 }}>
                     <button onClick={() => setShowFontList(v => !v)}
                       style={{ height: 28, fontSize: 11, padding: '0 5px', borderRadius: 4, border: '1px solid var(--color-border)', background: 'white', maxWidth: 85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}
-                      title={selectedEl.fontFamily}>
-                      {selectedEl.fontFamily.split(',')[0].replace(/'/g, '').trim().slice(0, 8)}▾
+                      title={shownFontLabel}>
+                      {shownFontLabel.slice(0, 8)}▾
                     </button>
                     {showFontList && (
                       <div className="absolute z-50 flex flex-col rounded-xl shadow-xl overflow-hidden"
@@ -2513,9 +2217,9 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
                           style={{ borderBottom: '1px solid var(--color-border)' }} />
                         <div className="overflow-y-auto">
                           {filteredFonts.map(f => (
-                            <button key={f} onClick={() => { updateEl(selectedEl.id, { fontFamily: `'${f}', sans-serif` }); setShowFontList(false); setFontSearch('') }}
+                            <button key={f} onClick={() => { applyTextStyle(selectedEl, { fontFamily: `'${f}', sans-serif` }); setShowFontList(false); setFontSearch('') }}
                               className="w-full text-left text-xs px-3 py-1.5 hover:bg-pink-50 truncate"
-                              style={{ fontFamily: `'${f}'`, background: selectedEl.fontFamily.includes(f) ? 'var(--color-primary-light)' : undefined }}>
+                              style={{ fontFamily: `'${f}'`, background: shownFont?.toLowerCase() === f.toLowerCase() ? 'var(--color-primary-light)' : undefined }}>
                               {f}
                             </button>
                           ))}
@@ -2525,18 +2229,22 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-                    <div style={{ width: 14, height: 14, borderRadius: '50%', background: textColorInput || selectedEl.color, border: '1px solid var(--color-border)', flexShrink: 0 }} />
-                    <input type="text" value={textColorInput} placeholder="#4A3F3F"
-                      onChange={e => { setTextColorInput(e.target.value); if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) updateEl(selectedEl.id, { color: e.target.value }) }}
+                    <label title="글자색 선택" style={{ position: 'relative', width: 16, height: 16, borderRadius: '50%', background: /^#[0-9a-fA-F]{6}$/.test(textColorInput) ? textColorInput : 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)', border: '1px solid var(--color-border)', flexShrink: 0, cursor: 'pointer', overflow: 'hidden' }}>
+                      <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(textColorInput) ? textColorInput : selectedEl.color}
+                        onChange={e => { setTextColorInput(e.target.value); applyTextStyle(selectedEl, { color: e.target.value }, { refocus: false }) }}
+                        style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
+                    </label>
+                    <input type="text" value={textColorInput} placeholder={textView ? '여러 색' : '#4A3F3F'}
+                      onChange={e => { setTextColorInput(e.target.value); if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) applyTextStyle(selectedEl, { color: e.target.value }, { refocus: false }) }}
                       style={{ height: 28, fontSize: 11, padding: '0 4px', borderRadius: 4, border: '1px solid var(--color-border)', width: 52 }} />
                   </div>
 
                   {vSep}
 
-                  {rowBtn(ICONS.bold, '굵게', () => updateEl(selectedEl.id, { bold: !selectedEl.bold }), selectedEl.bold)}
-                  {rowBtn(ICONS.italic, '기울임', () => updateEl(selectedEl.id, { italic: !selectedEl.italic }), selectedEl.italic)}
-                  {rowBtn(ICONS.underline, '밑줄', () => updateEl(selectedEl.id, { underline: !selectedEl.underline }), !!selectedEl.underline)}
-                  {rowBtn(ICONS.strikethrough, '취소선', () => updateEl(selectedEl.id, { strikethrough: !selectedEl.strikethrough }), !!selectedEl.strikethrough)}
+                  {rowBtn(ICONS.bold, '굵게', () => applyTextStyle(selectedEl, { bold: !isOn('bold') }), isOn('bold'))}
+                  {rowBtn(ICONS.italic, '기울임', () => applyTextStyle(selectedEl, { italic: !isOn('italic') }), isOn('italic'))}
+                  {rowBtn(ICONS.underline, '밑줄', () => applyTextStyle(selectedEl, { underline: !isOn('underline') }), isOn('underline'))}
+                  {rowBtn(ICONS.strikethrough, '취소선', () => applyTextStyle(selectedEl, { strikethrough: !isOn('strikethrough') }), isOn('strikethrough'))}
 
                   {vSep}
 
@@ -2675,6 +2383,25 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
                 {hSep}
               </>)}
 
+              {/* 시정표 시계 설정 행 */}
+              {selectedEl.type === 'timetableClock' && (<>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center', width: '100%' }}>
+                  <button onClick={() => setShowTimetableEditor(true)} title="시정·개인 시간표·특별 시정 편집, Whattime 시정 가져오기"
+                    style={{ ...S, width: 'auto', padding: '0 10px', fontSize: 11, background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', border: '1px solid var(--color-primary)' }}>
+                    ⚙ 시정 설정
+                  </button>
+                  <span style={{ fontSize: 10, color: 'var(--color-text-muted)', flexShrink: 0 }}>
+                    {timetable?.source === 'whattime' ? 'Whattime 연동' : timetable ? '직접 설정' : '시정 없음'}
+                  </span>
+                  {vSep}
+                  {rowBtn(<span style={{ fontSize: 10 }}>색상</span>, '시정표 색상', () => setTtColorPanelId(id => id === selectedEl.id ? null : selectedEl.id), ttColorPanelId === selectedEl.id)}
+                  {rowBtn(<span style={{ fontSize: 10 }}>미니</span>, '미니 시정: 현재 교시만 표시', () => updateEl(selectedEl.id, { ttMode: 'mini', h: Math.round(selectedEl.w * 130 / 300) }), (selectedEl.ttMode ?? 'mini') === 'mini')}
+                  {rowBtn(<span style={{ fontSize: 10 }}>전체</span>, '전체 시정: 오늘 시정 목록 표시', () => updateEl(selectedEl.id, { ttMode: 'full', h: Math.round(selectedEl.w * 560 / 300) }), selectedEl.ttMode === 'full')}
+                  {rowBtn(<span style={{ fontSize: 10 }}>반</span>, '개인 시간표(반·과목) 표시', () => updateEl(selectedEl.id, { ttShowPersonal: selectedEl.ttShowPersonal === false }), selectedEl.ttShowPersonal !== false)}
+                </div>
+                {hSep}
+              </>)}
+
               {/* Row 4 for text / only row for others: 전체 공통 툴바 */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'center', width: '100%' }}>
                 {selectedEl.type === 'photo' && (<>
@@ -2715,6 +2442,12 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
       </div>
 
       {/* Crop modal */}
+      {showTimetableEditor && (
+        <TimetableEditor initial={timetable}
+          onSave={schedule => { saveTimetable(schedule); setShowTimetableEditor(false) }}
+          onClose={() => setShowTimetableEditor(false)} />
+      )}
+
       {cropTarget && (() => {
         const el = data.elements.find(e => e.id === cropTarget)
         if (!el) return null
@@ -2789,42 +2522,6 @@ export default function DailyView({ currentDate, onPrev, onNext, onToday, boardK
         onResultChange={result => api.settings.set(`groupWidget_${dateStr}`, JSON.stringify({ ...result, position: groupMakerPosition, size: groupMakerSize, z: groupMakerZ }))}
       />
 
-      {exportPreview && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 999999, background: 'rgba(0,0,0,0.7)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, visibility: capturing === null ? 'visible' : 'hidden', pointerEvents: capturing === null ? 'auto' : 'none' }}
-          onClick={() => setExportPreview(null)}>
-          <div style={{ background: 'var(--color-bg)', borderRadius: 16, padding: 20, display: 'flex', flexDirection: 'column', gap: 14, maxWidth: '90%', maxHeight: '90%', boxShadow: '0 8px 40px rgba(0,0,0,0.4)' }}
-            onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>내보내기 미리보기</p>
-              <button onClick={() => setExportPreview(null)} style={{ fontSize: 18, color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>×</button>
-            </div>
-            <div style={{ overflow: 'auto', borderRadius: 8, border: '1px solid var(--color-border)', background: '#888' }}>
-              <img src={exportPreview.dataUrl} alt="미리보기" draggable={false}
-                style={{ display: 'block', maxWidth: '70vw', maxHeight: '60vh', objectFit: 'contain' }} />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 8, flex: 1, background: 'var(--color-primary-light)', border: '1px solid var(--color-border)', overflow: 'hidden' }}>
-                <span style={{ fontSize: 11, color: 'var(--color-text-muted)', flexShrink: 0 }}>파일명</span>
-                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exportPreview.filename}</span>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => setExportPreview(null)}
-                style={{ flex: 1, padding: '8px 0', borderRadius: 10, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-muted)', fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>
-                취소
-              </button>
-              <button onClick={async () => {
-                const b64 = exportPreview.dataUrl.split(',')[1]
-                setExportPreview(null)
-                await api.export.savePng(b64, exportPreview.filename)
-              }}
-                style={{ flex: 2, padding: '8px 0', borderRadius: 10, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 13, cursor: 'pointer', fontWeight: 700 }}>
-                저장
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

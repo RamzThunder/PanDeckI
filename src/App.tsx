@@ -13,6 +13,7 @@ const DEFAULT_CATEGORIES = ['수업', '학급 운영', '행사', '개인', '기�
 const APP_WIDTH = 1800
 const APP_HEIGHT = 1012
 const WINDOW_TITLEBAR_HEIGHT = 28
+const SIDEBAR_WIDTH = 56
 type AppView = 'dashboard' | 'students'
 
 function resizeWindow(zoom: number) {
@@ -22,20 +23,12 @@ function resizeWindow(zoom: number) {
   }).catch(() => {})
 }
 
-function shiftDate(date: Date, amount: number) {
-  const next = new Date(date)
-  next.setDate(next.getDate() + amount)
-  return next
-}
-
 export default function App(): JSX.Element {
-  const [currentDate, setCurrentDate] = useState(new Date())
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [activeThemeId, setActiveThemeId] = useState('sky')
   const [appZoom, setAppZoom] = useState(1)
   const [fontScale, setFontScale] = useState(1)
   const [fontOffsetY, setFontOffsetY] = useState(0)
-  const [diaryName, setDiaryName] = useState('PanDeckI')
   const [systemFonts, setSystemFonts] = useState<string[]>([])
   const [globalFont, setGlobalFont] = useState('')
   const [boards, setBoards] = useState<BoardInfo[]>([])
@@ -45,13 +38,54 @@ export default function App(): JSX.Element {
   const [createRequest, setCreateRequest] = useState(0)
   const [appView, setAppView] = useState<AppView>('dashboard')
   const [studentLists, setStudentLists] = useState<StudentList[]>([])
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight })
   const zoomRef = useRef(appZoom)
   zoomRef.current = appZoom
+  const fullscreenRef = useRef(isFullscreen)
+  fullscreenRef.current = isFullscreen
+
+  const toggleFullscreen = () => {
+    const next = !fullscreenRef.current
+    fullscreenRef.current = next
+    setIsFullscreen(next)
+    invoke('set_fullscreen', { fullscreen: next }).catch(() => {})
+  }
+
+  useEffect(() => {
+    // 창 크기가 바뀔 때(전체화면 진입/해제, 초록 버튼 등) 실제 전체화면 여부와 뷰포트를 동기화
+    const onResize = () => {
+      setViewport({ width: window.innerWidth, height: window.innerHeight })
+      invoke<boolean>('is_fullscreen').then(value => {
+        fullscreenRef.current = value
+        setIsFullscreen(value)
+      }).catch(() => {})
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  useEffect(() => {
+    // F11 또는 Cmd+Ctrl+F로 전체화면 토글
+    const onKeyDown = (event: KeyboardEvent) => {
+      const macCombo = event.metaKey && event.ctrlKey && event.key.toLowerCase() === 'f'
+      if (event.key !== 'F11' && !macCombo) return
+      event.preventDefault()
+      toggleFullscreen()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('is-fullscreen', isFullscreen)
+  }, [isFullscreen])
 
   useEffect(() => {
     const onWheel = (event: WheelEvent) => {
       if (!event.metaKey && !event.ctrlKey) return
       event.preventDefault()
+      if (fullscreenRef.current) return
       const delta = event.deltaY > 0 ? -0.05 : 0.05
       const next = Math.max(0.5, Math.min(1.5, Math.round((zoomRef.current + delta) * 20) / 20))
       zoomRef.current = next
@@ -66,7 +100,7 @@ export default function App(): JSX.Element {
   useEffect(() => {
     async function loadSettings() {
       const settings = await invoke<Record<string, string>>('get_settings_batch', {
-        keys: ['active_theme', 'globalFont', 'pandecki_boards', 'pandecki_categories', 'pandecki_student_lists', 'appZoom', 'fontScale', 'fontOffsetY', 'diaryName'],
+        keys: ['active_theme', 'globalFont', 'pandecki_boards', 'pandecki_categories', 'pandecki_student_lists', 'appZoom', 'fontScale', 'fontOffsetY'],
       }).catch(() => ({} as Record<string, string>))
 
       const themeId = settings.active_theme ?? 'sky'
@@ -96,7 +130,6 @@ export default function App(): JSX.Element {
       if (Number.isFinite(scale) && scale > 0) setFontScale(scale)
       const offset = Number(settings.fontOffsetY)
       if (Number.isFinite(offset)) setFontOffsetY(offset)
-      if (settings.diaryName) setDiaryName(settings.diaryName)
 
       if (settings.pandecki_categories) {
         try {
@@ -219,24 +252,34 @@ export default function App(): JSX.Element {
     setActiveBoard(null)
   }
 
-  const requestNewBoard = () => {
-    setActiveBoard(null)
-    setCreateRequest(value => value + 1)
-  }
-
   const changeZoom = (zoom: number) => {
     setAppZoom(zoom)
     zoomRef.current = zoom
   }
 
   const commitZoom = (zoom: number) => {
-    resizeWindow(zoom)
+    if (!fullscreenRef.current) resizeWindow(zoom)
     saveSetting('appZoom', String(zoom))
   }
 
+  // 전체화면: 사이드바를 숨기고, 남은 콘텐츠 영역을 디스플레이에 맞춰 비율 유지로 확대하고 가운데 정렬
+  const shellWidth = isFullscreen ? APP_WIDTH - SIDEBAR_WIDTH : APP_WIDTH
+  const fitScale = Math.min(viewport.width / shellWidth, viewport.height / APP_HEIGHT)
+  const shellStyle: React.CSSProperties = isFullscreen
+    ? { width: shellWidth, transform: `translate(${(viewport.width - shellWidth * fitScale) / 2}px, ${(viewport.height - APP_HEIGHT * fitScale) / 2}px) scale(${fitScale})` }
+    : { transform: `scale(${appZoom})` }
+
   return (
-    <div className="app-shell" style={{ transform: `scale(${appZoom})` }}>
-      <AppSidebar dashboardActive={appView === 'dashboard' && !activeBoard} studentsActive={appView === 'students'} settingsOpen={settingsOpen} onDashboard={() => selectCategory('전체')} onStudents={() => { setAppView('students'); setActiveBoard(null); setSettingsOpen(false) }} onSettings={() => setSettingsOpen(value => !value)} />
+    <>
+    {isFullscreen && (
+      <div className="fullscreen-exit-zone">
+        <button className="fullscreen-exit-button" title="전체화면 끝내기 (F11)" onClick={toggleFullscreen}>
+          <svg viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+        </button>
+      </div>
+    )}
+    <div className={`app-shell ${isFullscreen ? 'app-shell-fullscreen' : ''}`} style={shellStyle}>
+      <AppSidebar dashboardActive={appView === 'dashboard' && !activeBoard} studentsActive={appView === 'students'} settingsOpen={settingsOpen} fullscreen={isFullscreen} onFullscreen={toggleFullscreen} onDashboard={() => selectCategory('전체')} onStudents={() => { setAppView('students'); setActiveBoard(null); setSettingsOpen(false) }} onSettings={() => setSettingsOpen(value => !value)} />
       <section className="app-content">
         {appView === 'students' ? (
           <StudentLists lists={studentLists} onSave={saveStudentList} onDelete={deleteStudentList} />
@@ -245,22 +288,17 @@ export default function App(): JSX.Element {
         ) : (
           <main className="pandecki-daily-shell">
       <DailyView
-        currentDate={currentDate}
-        onPrev={() => setCurrentDate(date => shiftDate(date, -1))}
-        onNext={() => setCurrentDate(date => shiftDate(date, 1))}
-        onToday={() => setCurrentDate(new Date())}
         boardKey={`board_${activeBoard.id}`}
         boardTitle={activeBoard.title}
         systemFonts={systemFonts}
-        globalFont={globalFont}
-        diaryName={diaryName}
         studentLists={studentLists}
       />
           </main>
         )}
       </section>
-      {settingsOpen && <SettingsPanel activeThemeId={activeThemeId} onThemeChange={id => { setActiveThemeId(id); saveSetting('active_theme', id) }} appZoom={appZoom} onZoomChange={changeZoom} onZoomCommit={commitZoom} globalFont={globalFont} onGlobalFontChange={value => { setGlobalFont(value); applyGlobalFont(value); saveSetting('globalFont', value) }} systemFonts={systemFonts} fontScale={fontScale} onFontScaleChange={value => { setFontScale(value); saveSetting('fontScale', String(value)) }} fontOffsetY={fontOffsetY} onFontOffsetYChange={value => { setFontOffsetY(value); saveSetting('fontOffsetY', String(value)) }} diaryName={diaryName} onDiaryNameChange={value => { setDiaryName(value); saveSetting('diaryName', value) }} onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsPanel activeThemeId={activeThemeId} onThemeChange={id => { setActiveThemeId(id); saveSetting('active_theme', id) }} appZoom={appZoom} onZoomChange={changeZoom} onZoomCommit={commitZoom} globalFont={globalFont} onGlobalFontChange={value => { setGlobalFont(value); applyGlobalFont(value); saveSetting('globalFont', value) }} systemFonts={systemFonts} fontScale={fontScale} onFontScaleChange={value => { setFontScale(value); saveSetting('fontScale', String(value)) }} fontOffsetY={fontOffsetY} onFontOffsetYChange={value => { setFontOffsetY(value); saveSetting('fontOffsetY', String(value)) }} onClose={() => setSettingsOpen(false)} />}
       <UpdateNotice />
     </div>
+    </>
   )
 }

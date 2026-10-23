@@ -42,118 +42,6 @@ pub fn delete_entry(state: State<DbState>, date: String) -> Result<(), String> {
     Ok(())
 }
 
-#[command]
-pub fn list_month_entries(state: State<DbState>, year_month: String) -> Result<Vec<String>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let pattern = format!("{}%", year_month);
-    let mut stmt = conn
-        .prepare("SELECT date FROM entries WHERE date LIKE ?1 ORDER BY date")
-        .map_err(|e| e.to_string())?;
-    let dates = stmt
-        .query_map([&pattern], |row| row.get(0))
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
-    Ok(dates)
-}
-
-#[derive(Serialize)]
-pub struct DayBgInfo {
-    pub date: String,
-    pub bg: Option<String>,
-    pub bg_image: Option<String>,
-}
-
-#[command]
-pub fn list_month_bgs(state: State<DbState>, year_month: String) -> Result<Vec<DayBgInfo>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let pattern = format!("{}%", year_month);
-    let mut stmt = conn
-        .prepare(
-            "SELECT date,
-                    json_extract(content, '$.bg'),
-                    json_extract(content, '$.bgImage')
-             FROM entries WHERE date LIKE ?1 ORDER BY date",
-        )
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([&pattern], |row| {
-            Ok(DayBgInfo {
-                date: row.get(0)?,
-                bg: row.get(1)?,
-                bg_image: row.get(2)?,
-            })
-        })
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
-    Ok(rows)
-}
-
-// ── Monthly Data ──────────────────────────────────────────────────────────────
-
-#[derive(Serialize, Deserialize)]
-pub struct MonthlyData {
-    pub goals: Vec<String>,
-    pub bucket_list: Vec<String>,
-    pub events: Vec<serde_json::Value>,
-    pub profile: serde_json::Value,
-}
-
-#[command]
-pub fn get_monthly(state: State<DbState>, year_month: String) -> Result<MonthlyData, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let result = conn.query_row(
-        "SELECT goals, bucket_list, events, profile FROM monthly_data WHERE year_month = ?1",
-        [&year_month],
-        |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-            ))
-        },
-    );
-    match result {
-        Ok((goals, bucket_list, events, profile)) => Ok(MonthlyData {
-            goals: serde_json::from_str(&goals).unwrap_or_default(),
-            bucket_list: serde_json::from_str(&bucket_list).unwrap_or_default(),
-            events: serde_json::from_str(&events).unwrap_or_default(),
-            profile: serde_json::from_str(&profile).unwrap_or(serde_json::Value::Object(Default::default())),
-        }),
-        Err(_) => Ok(MonthlyData {
-            goals: vec![],
-            bucket_list: vec![],
-            events: vec![],
-            profile: serde_json::Value::Object(Default::default()),
-        }),
-    }
-}
-
-#[command]
-pub fn save_monthly(state: State<DbState>, year_month: String, data: MonthlyData) -> Result<(), String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    conn.execute(
-        "INSERT INTO monthly_data (year_month, goals, bucket_list, events, profile)
-         VALUES (?1, ?2, ?3, ?4, ?5)
-         ON CONFLICT(year_month) DO UPDATE SET
-           goals = excluded.goals,
-           bucket_list = excluded.bucket_list,
-           events = excluded.events,
-           profile = excluded.profile",
-        [
-            &year_month,
-            &serde_json::to_string(&data.goals).unwrap_or_default(),
-            &serde_json::to_string(&data.bucket_list).unwrap_or_default(),
-            &serde_json::to_string(&data.events).unwrap_or_default(),
-            &serde_json::to_string(&data.profile).unwrap_or_default(),
-        ],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 #[command]
@@ -453,67 +341,35 @@ pub fn list_system_fonts() -> Vec<String> {
     list_fonts_impl()
 }
 
-#[cfg(target_os = "macos")]
-fn font_data_url_impl(font_name: &str) -> Result<Option<String>, String> {
-    let script = r#"
-import json
-import sys
-from AppKit import NSFontManager
-from CoreText import CTFontCreateWithName, CTFontCopyAttribute, kCTFontURLAttribute
+// ── Whattime 시정표 ──────────────────────────────────────────────────────────
 
-family = sys.argv[1]
-fm = NSFontManager.sharedFontManager()
-members = fm.availableMembersOfFontFamily_(family) or []
-postscript = None
-for m in members:
-    style = str(m[1]).lower() if len(m) > 1 else ''
-    if 'regular' in style or 'normal' in style:
-        postscript = str(m[0])
-        break
-if not postscript and members:
-    postscript = str(members[0][0])
-if not postscript:
-    postscript = family
-
-font = CTFontCreateWithName(postscript, 12, None)
-url = CTFontCopyAttribute(font, kCTFontURLAttribute)
-print(json.dumps(str(url.path()) if url else None))
-"#;
-    let output = std::process::Command::new("python3")
-        .args(["-c", script, font_name])
-        .output()
-        .map_err(|e| e.to_string())?;
-    if !output.status.success() {
-        return Ok(None);
+/// macOS에 설치된 Whattime(지금 몇교시야) 앱의 schedule.json을 읽는다. 없으면 None.
+#[command]
+pub fn read_whattime_schedule() -> Result<Option<String>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let home = std::env::var("HOME").map_err(|e| e.to_string())?;
+        let path = PathBuf::from(home).join("Library/Application Support/WhatTime/schedule.json");
+        if path.exists() {
+            return fs::read_to_string(&path).map(Some).map_err(|e| e.to_string());
+        }
     }
-    let stdout = String::from_utf8(output.stdout).map_err(|e| e.to_string())?;
-    let path: Option<String> = serde_json::from_str(stdout.trim()).map_err(|e| e.to_string())?;
-    let Some(path) = path else { return Ok(None) };
-    let data = fs::read(&path).map_err(|e| e.to_string())?;
-    let ext = std::path::Path::new(&path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("otf")
-        .to_lowercase();
-    let mime = match ext.as_str() {
-        "ttf" => "font/ttf",
-        "ttc" => "font/collection",
-        "woff" => "font/woff",
-        "woff2" => "font/woff2",
-        _ => "font/otf",
-    };
-    let b64 = general_purpose::STANDARD.encode(&data);
-    Ok(Some(format!("data:{};base64,{}", mime, b64)))
-}
-
-#[cfg(not(target_os = "macos"))]
-fn font_data_url_impl(_font_name: &str) -> Result<Option<String>, String> {
     Ok(None)
 }
 
+/// Whattime schedule.json 또는 설정 백업 JSON을 직접 골라 읽는다.
 #[command]
-pub fn font_data_url(font_name: String) -> Result<Option<String>, String> {
-    font_data_url_impl(&font_name)
+pub async fn pick_whattime_schedule(app: AppHandle) -> Result<Option<String>, String> {
+    let result = app
+        .dialog()
+        .file()
+        .set_title("Whattime 시정표 불러오기")
+        .add_filter("JSON", &["json"])
+        .blocking_pick_file();
+    match result {
+        Some(path) => fs::read_to_string(path.to_string()).map(Some).map_err(|e| e.to_string()),
+        None => Ok(None),
+    }
 }
 
 // ── Window ────────────────────────────────────────────────────────────────────
@@ -528,45 +384,23 @@ pub fn resize_window(app: AppHandle, width: u32, height: u32) -> Result<(), Stri
 }
 
 #[command]
-pub fn window_start_dragging(app: AppHandle) {
-    if let Some(win) = app.get_webview_window("main") { win.start_dragging().ok(); }
-}
-
-#[command]
 pub fn window_close(app: AppHandle) {
     if let Some(win) = app.get_webview_window("main") { win.close().ok(); }
 }
 
 #[command]
-pub fn window_minimize(app: AppHandle) {
-    if let Some(win) = app.get_webview_window("main") { win.minimize().ok(); }
-}
-
-#[command]
-pub fn window_toggle_maximize(app: AppHandle) {
+pub fn set_fullscreen(app: AppHandle, fullscreen: bool) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("main") {
-        if win.is_maximized().unwrap_or(false) { win.unmaximize().ok(); }
-        else { win.maximize().ok(); }
-    }
-}
-
-// ── PNG 내보내기 ──────────────────────────────────────────────────────────────
-
-#[command]
-pub async fn save_png(app: AppHandle, b64: String, filename: String) -> Result<(), String> {
-    let path = app
-        .dialog()
-        .file()
-        .set_title("PNG로 내보내기")
-        .set_file_name(&filename)
-        .add_filter("PNG 이미지", &["png"])
-        .blocking_save_file();
-    if let Some(fpath) = path {
-        let path_str = fpath.to_string();
-        let bytes = general_purpose::STANDARD.decode(&b64).map_err(|e| e.to_string())?;
-        fs::write(&path_str, bytes).map_err(|e| e.to_string())?;
+        win.set_fullscreen(fullscreen).map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[command]
+pub fn is_fullscreen(app: AppHandle) -> bool {
+    app.get_webview_window("main")
+        .and_then(|win| win.is_fullscreen().ok())
+        .unwrap_or(false)
 }
 
 // ── 백업 / 복원 ───────────────────────────────────────────────────────────────
@@ -745,294 +579,6 @@ pub fn reset_db_path(app: AppHandle) -> Result<(), String> {
         fs::remove_file(&config).map_err(|e| e.to_string())?;
     }
     Ok(())
-}
-
-// ── 화면 캡처 내보내기 ─────────────────────────────────────────────────────────
-
-#[cfg(target_os = "macos")]
-fn screenshot_region(lx: i32, ly: i32, lw: u32, lh: u32, path: &str) -> Result<(), String> {
-    let region = format!("{},{},{},{}", lx, ly, lw, lh);
-    std::process::Command::new("screencapture")
-        .args(["-R", &region, "-x", path])
-        .status()
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-#[cfg(target_os = "windows")]
-fn screenshot_region(lx: i32, ly: i32, lw: u32, lh: u32, path: &str) -> Result<(), String> {
-    use std::io::BufWriter;
-    use windows::Win32::Graphics::Gdi::{
-        BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
-        GetDIBits, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
-        HGDIOBJ, SRCCOPY,
-    };
-    use windows::Win32::UI::HiDpi::{
-        SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
-    };
-
-    let width = i32::try_from(lw).map_err(|_| "region width too large".to_string())?;
-    let height = i32::try_from(lh).map_err(|_| "region height too large".to_string())?;
-    let bytes_len = (lw as usize)
-        .checked_mul(lh as usize)
-        .and_then(|px| px.checked_mul(4))
-        .ok_or("region too large")?;
-
-    unsafe {
-        let prev_dpi = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-        let screen_dc = GetDC(None);
-        if screen_dc.is_invalid() {
-            if !prev_dpi.is_invalid() {
-                SetThreadDpiAwarenessContext(prev_dpi);
-            }
-            return Err("GetDC failed".into());
-        }
-
-        let mem_dc = CreateCompatibleDC(Some(screen_dc));
-        if mem_dc.is_invalid() {
-            ReleaseDC(None, screen_dc);
-            if !prev_dpi.is_invalid() {
-                SetThreadDpiAwarenessContext(prev_dpi);
-            }
-            return Err("CreateCompatibleDC failed".into());
-        }
-
-        let bitmap = CreateCompatibleBitmap(screen_dc, width, height);
-        if bitmap.is_invalid() {
-            let _ = DeleteDC(mem_dc);
-            ReleaseDC(None, screen_dc);
-            if !prev_dpi.is_invalid() {
-                SetThreadDpiAwarenessContext(prev_dpi);
-            }
-            return Err("CreateCompatibleBitmap failed".into());
-        }
-
-        let old_obj = SelectObject(mem_dc, HGDIOBJ(bitmap.0));
-        let capture_result = BitBlt(mem_dc, 0, 0, width, height, Some(screen_dc), lx, ly, SRCCOPY);
-        if !old_obj.is_invalid() {
-            SelectObject(mem_dc, old_obj);
-        }
-        ReleaseDC(None, screen_dc);
-
-        if let Err(e) = capture_result {
-            let _ = DeleteObject(HGDIOBJ(bitmap.0));
-            let _ = DeleteDC(mem_dc);
-            if !prev_dpi.is_invalid() {
-                SetThreadDpiAwarenessContext(prev_dpi);
-            }
-            return Err(format!("BitBlt failed: {e}"));
-        }
-
-        let mut info = BITMAPINFO {
-            bmiHeader: BITMAPINFOHEADER {
-                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-                biWidth: width,
-                biHeight: -height,
-                biPlanes: 1,
-                biBitCount: 32,
-                biCompression: BI_RGB.0,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        let mut bgra = vec![0u8; bytes_len];
-        let lines = GetDIBits(
-            mem_dc,
-            bitmap,
-            0,
-            lh,
-            Some(bgra.as_mut_ptr() as *mut std::ffi::c_void),
-            &mut info,
-            DIB_RGB_COLORS,
-        );
-
-        let _ = DeleteObject(HGDIOBJ(bitmap.0));
-        let _ = DeleteDC(mem_dc);
-        if !prev_dpi.is_invalid() {
-            SetThreadDpiAwarenessContext(prev_dpi);
-        }
-
-        if lines == 0 {
-            return Err("GetDIBits failed".into());
-        }
-
-        for px in bgra.chunks_exact_mut(4) {
-            px.swap(0, 2);
-            px[3] = 255;
-        }
-
-        let file = fs::File::create(path).map_err(|e| e.to_string())?;
-        let writer = BufWriter::new(file);
-        let mut encoder = png::Encoder::new(writer, lw, lh);
-        encoder.set_color(png::ColorType::Rgba);
-        encoder.set_depth(png::BitDepth::Eight);
-        let mut png_writer = encoder.write_header().map_err(|e| e.to_string())?;
-        png_writer
-            .write_image_data(&bgra)
-            .map_err(|e| e.to_string())?;
-    }
-
-    Ok(())
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn screenshot_region(_lx: i32, _ly: i32, _lw: u32, _lh: u32, _path: &str) -> Result<(), String> {
-    Err("screenshot not supported on this platform".into())
-}
-
-#[cfg(target_os = "macos")]
-fn get_cg_window_id(win: &tauri::WebviewWindow) -> Option<u32> {
-    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-    let handle = win.window_handle().ok()?;
-    let ns_view = match handle.as_raw() {
-        RawWindowHandle::AppKit(h) => h.ns_view.as_ptr() as *mut std::ffi::c_void,
-        _ => return None,
-    };
-    #[link(name = "objc")]
-    extern "C" {
-        fn sel_registerName(s: *const std::os::raw::c_char) -> *const std::ffi::c_void;
-        fn objc_msgSend(recv: *mut std::ffi::c_void, sel: *const std::ffi::c_void, ...) -> *mut std::ffi::c_void;
-    }
-    unsafe {
-        let sel_window = sel_registerName(b"window\0".as_ptr() as *const _);
-        let ns_window = objc_msgSend(ns_view, sel_window);
-        if ns_window.is_null() { return None; }
-        let sel_num = sel_registerName(b"windowNumber\0".as_ptr() as *const _);
-        let n = objc_msgSend(ns_window, sel_num) as std::os::raw::c_long;
-        if n > 0 { Some(n as u32) } else { None }
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn capture_window_to_file(app: &AppHandle, tmp: &std::path::Path) -> Result<(), String> {
-    let win = app.get_webview_window("main").ok_or("window not found")?;
-    if let Some(wid) = get_cg_window_id(&win) {
-        std::process::Command::new("screencapture")
-            .args(["-l", &wid.to_string(), "-x", tmp.to_str().unwrap()])
-            .status()
-            .map_err(|e| e.to_string())?;
-        if tmp.exists() {
-            return Ok(());
-        }
-    }
-    // fallback: 영역 스크린샷
-    let scale = win.scale_factor().map_err(|e| e.to_string())?;
-    let phys_pos = win.outer_position().map_err(|e| e.to_string())?;
-    let phys_size = win.outer_size().map_err(|e| e.to_string())?;
-    let lx = (phys_pos.x as f64 / scale) as i32;
-    let ly = (phys_pos.y as f64 / scale) as i32;
-    let lw = (phys_size.width as f64 / scale) as u32;
-    let lh = (phys_size.height as f64 / scale) as u32;
-    screenshot_region(lx, ly, lw, lh, tmp.to_str().unwrap())
-}
-
-#[cfg(target_os = "windows")]
-fn capture_window_to_file(app: &AppHandle, tmp: &std::path::Path) -> Result<(), String> {
-    let win = app.get_webview_window("main").ok_or("window not found")?;
-    // inner_position/size는 물리 픽셀 좌표 → scale로 나누지 않고 그대로 DPI-aware CopyFromScreen에 전달
-    let phys_pos = win.inner_position().map_err(|e| e.to_string())?;
-    let phys_size = win.inner_size().map_err(|e| e.to_string())?;
-    let x = phys_pos.x;
-    let y = phys_pos.y;
-    let w = phys_size.width;
-    let h = phys_size.height;
-    let tmp_path = tmp.to_string_lossy().replace('\'', "''");
-    // C# 컴파일은 DPI 함수만 — System.Drawing은 PowerShell 네이티브로 사용
-    let script = format!(
-        r#"Add-Type @'
-using System;
-using System.Runtime.InteropServices;
-public class DpiFix {{
-    [DllImport("user32.dll")]
-    public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr v);
-}}
-'@
-[DpiFix]::SetThreadDpiAwarenessContext([IntPtr](-4))
-Add-Type -AssemblyName System.Drawing
-$bmp = New-Object System.Drawing.Bitmap({w}, {h})
-$g = [System.Drawing.Graphics]::FromImage($bmp)
-$g.CopyFromScreen({x}, {y}, 0, 0, $bmp.Size)
-$g.Dispose()
-$bmp.Save('{tmp}', [System.Drawing.Imaging.ImageFormat]::Png)
-$bmp.Dispose()"#,
-        w = w, h = h, x = x, y = y, tmp = tmp_path
-    );
-    let ok = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    if ok && tmp.exists() { return Ok(()); }
-    Err("capture failed".into())
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn capture_window_to_file(_app: &AppHandle, _tmp: &std::path::Path) -> Result<(), String> {
-    Err("screenshot not supported on this platform".into())
-}
-
-#[command]
-pub fn capture_screenshot_to(app: AppHandle, path: String) -> Result<(), String> {
-    #[cfg(target_os = "windows")] {
-        let tmp = std::env::temp_dir().join("dida_screenshot_tmp.png");
-        capture_window_to_file(&app, &tmp)?;
-        fs::copy(&tmp, &path).map_err(|e| e.to_string())?;
-        fs::remove_file(&tmp).ok();
-        return Ok(());
-    }
-    #[allow(unreachable_code)]
-    {
-        let win = app.get_webview_window("main").ok_or("window not found")?;
-        let scale = win.scale_factor().map_err(|e| e.to_string())?;
-        let phys_pos = win.outer_position().map_err(|e| e.to_string())?;
-        let phys_size = win.outer_size().map_err(|e| e.to_string())?;
-        let lx = (phys_pos.x as f64 / scale) as i32;
-        let ly = (phys_pos.y as f64 / scale) as i32;
-        let lw = (phys_size.width as f64 / scale) as u32;
-        let lh = (phys_size.height as f64 / scale) as u32;
-        screenshot_region(lx, ly, lw, lh, &path)
-    }
-}
-
-#[command]
-pub fn capture_screenshot_b64(app: AppHandle) -> Result<String, String> {
-    let tmp = std::env::temp_dir().join("dida_preview_tmp.png");
-    capture_window_to_file(&app, &tmp)?;
-    let bytes = fs::read(&tmp).map_err(|e| e.to_string())?;
-    fs::remove_file(&tmp).ok();
-    Ok(general_purpose::STANDARD.encode(&bytes))
-}
-
-#[command]
-pub fn capture_region_b64(app: AppHandle, x: f64, y: f64, w: f64, h: f64) -> Result<String, String> {
-    let win = app.get_webview_window("main").ok_or("window not found")?;
-    let scale = win.scale_factor().map_err(|e| e.to_string())?;
-    let inner = win.inner_position().map_err(|e| e.to_string())?;
-    #[cfg(target_os = "windows")]
-    let (lx, ly, lw, lh) = {
-        // WebView pointer coordinates are logical CSS pixels. The native GDI
-        // capture path receives physical pixels after opting into per-monitor DPI.
-        (
-            (inner.x as f64 + x * scale).round() as i32,
-            (inner.y as f64 + y * scale).round() as i32,
-            (w * scale).round().max(1.0) as u32,
-            (h * scale).round().max(1.0) as u32,
-        )
-    };
-    #[cfg(not(target_os = "windows"))]
-    let (lx, ly, lw, lh) = {
-        (
-            (inner.x as f64 / scale + x).round() as i32,
-            (inner.y as f64 / scale + y).round() as i32,
-            w.round().max(1.0) as u32,
-            h.round().max(1.0) as u32,
-        )
-    };
-    let tmp = std::env::temp_dir().join("dida_region_tmp.png");
-    screenshot_region(lx, ly, lw, lh, tmp.to_str().ok_or("invalid temp path")?)?;
-    let bytes = fs::read(&tmp).map_err(|e| e.to_string())?;
-    fs::remove_file(&tmp).ok();
-    Ok(general_purpose::STANDARD.encode(&bytes))
 }
 
 // ── HTTP fetch (트위터 등 외부 API – WebView CORS 우회) ──────────────────────

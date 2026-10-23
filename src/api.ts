@@ -1,13 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { save as dialogSave, open as dialogOpen } from '@tauri-apps/plugin-dialog'
 
-export interface MonthlyData {
-  goals: string[]
-  bucket_list: string[]
-  events: { title: string; target_date: string }[]
-  profile: { name?: string; bio?: string; photo_url?: string }
-}
-
 export const api = {
   entry: {
     async get(date: string): Promise<object | null> {
@@ -20,20 +13,6 @@ export const api = {
     },
     async delete(date: string): Promise<void> {
       await invoke('delete_entry', { date })
-    },
-    async listMonth(yearMonth: string): Promise<string[]> {
-      return invoke<string[]>('list_month_entries', { yearMonth })
-    },
-    async listMonthBgs(yearMonth: string): Promise<{ date: string; bg: string | null; bg_image: string | null }[]> {
-      return invoke('list_month_bgs', { yearMonth })
-    }
-  },
-  monthly: {
-    async get(yearMonth: string): Promise<MonthlyData> {
-      return invoke<MonthlyData>('get_monthly', { yearMonth })
-    },
-    async save(yearMonth: string, data: Partial<MonthlyData>): Promise<void> {
-      await invoke('save_monthly', { yearMonth, data })
     }
   },
   settings: {
@@ -55,6 +34,14 @@ export const api = {
       return invoke<string>('read_file_b64', { path })
     }
   },
+  whattime: {
+    async readInstalled(): Promise<string | null> {
+      return invoke<string | null>('read_whattime_schedule')
+    },
+    async pick(): Promise<string | null> {
+      return invoke<string | null>('pick_whattime_schedule')
+    }
+  },
   sticker: {
     async listPacks(): Promise<{ name: string; files: string[] }[]> {
       return invoke('list_sticker_packs')
@@ -69,9 +56,6 @@ export const api = {
   fonts: {
     async list(): Promise<string[]> {
       return invoke('list_system_fonts')
-    },
-    async dataUrl(fontName: string): Promise<string | null> {
-      return invoke<string | null>('font_data_url', { fontName })
     }
   },
   shell: {
@@ -85,29 +69,6 @@ export const api = {
     },
     async fetchImageB64(url: string): Promise<string> {
       return invoke<string>('fetch_image_b64', { url })
-    }
-  },
-  export: {
-    async savePng(b64: string, filename: string): Promise<void> {
-      await invoke('save_png', { b64, filename })
-    },
-    async captureToB64(): Promise<string> {
-      // screencapture -l <windowID> -o 로 알파 채널 포함 캡처 → body 배경 불필요
-      await new Promise<void>(resolve =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-      )
-      return invoke<string>('capture_screenshot_b64')
-    },
-    async captureRegionB64(rect: { x: number; y: number; w: number; h: number }): Promise<string> {
-      await new Promise<void>(resolve =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-      )
-      return invoke<string>('capture_region_b64', rect)
-    },
-    async captureScreenshot(): Promise<void> {
-      const path = await dialogSave({ title: 'PNG로 내보내기', filters: [{ name: 'PNG 이미지', extensions: ['png'] }] })
-      if (!path) return
-      await invoke('capture_screenshot_to', { path })
     }
   },
   backup: {

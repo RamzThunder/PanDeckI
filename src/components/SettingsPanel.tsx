@@ -20,8 +20,6 @@ interface Props {
   onFontScaleChange: (v: number) => void
   fontOffsetY: number
   onFontOffsetYChange: (v: number) => void
-  diaryName: string
-  onDiaryNameChange: (name: string) => void
   onClose: () => void
 }
 
@@ -56,7 +54,6 @@ export default function SettingsPanel({
   systemFonts,
   fontScale, onFontScaleChange,
   fontOffsetY, onFontOffsetYChange,
-  diaryName, onDiaryNameChange,
   onClose,
 }: Props): JSX.Element {
   const [tab, setTab] = useState<Tab>('info')
@@ -225,22 +222,6 @@ export default function SettingsPanel({
               </button>
               {updateMsg && <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>{updateMsg}</p>}
             </section>
-            <section>
-              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>다이어리 이름</p>
-              <input
-                type="text"
-                value={diaryName}
-                onChange={e => onDiaryNameChange(e.target.value)}
-                placeholder="PanDeckI"
-                className="w-full text-xs px-3 py-2 rounded-lg outline-none"
-                style={{ border: '1px solid var(--color-border)', background: 'white', color: 'var(--color-text)' }}
-              />
-              <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                내보내기 파일명에 사용돼요.
-                <p></p>(미리보기: {(diaryName || 'PanDeckI').replace(/\s+/g, '_')}_260524_2156.png)
-              </p>
-            </section>
-
             <section>
               <p className="text-xs font-semibold mb-3" style={{ color: 'var(--color-text-muted)' }}>데이터 관리</p>
               <div className="flex flex-col gap-2">

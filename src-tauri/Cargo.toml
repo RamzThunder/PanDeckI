@@ -18,9 +18,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["macos-private-api", "protocol-asset"] }
-tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 tauri-plugin-dialog = { version = "2" }
-tauri-plugin-fs = { version = "2" }
 tauri-plugin-updater = { version = "2" }
 tauri-plugin-process = { version = "2" }
 serde = { version = "1", features = ["derive"] }
@@ -29,15 +27,7 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 dirs = "5"
 base64 = "0.22"
 reqwest = { version = "0.12", features = ["json"] }
-raw-window-handle = "0.6"
-png = "0.17"
 
-[target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.61", features = [
-  "Win32_Foundation",
-  "Win32_Graphics_Gdi",
-  "Win32_UI_HiDpi",
-] }
 
 [profile.release]
 panic = "abort"
