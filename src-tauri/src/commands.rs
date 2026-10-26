@@ -425,8 +425,6 @@ pub async fn start_presentation(app: AppHandle, target: State<'_, PresentationTa
         .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15")
         .build().map_err(|e| e.to_string())?;
     if let Err(error) = crate::presentation::configure(window.clone(), main, monitor.clone()).await {
-        #[cfg(target_os = "macos")]
-        let _ = window.set_simple_fullscreen(false);
         let _ = window.destroy();
         return Err(error.to_string());
     }
@@ -437,8 +435,6 @@ pub async fn start_presentation(app: AppHandle, target: State<'_, PresentationTa
 #[command]
 pub fn stop_presentation(app: AppHandle, target: State<PresentationTarget>) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("presentation") {
-        #[cfg(target_os = "macos")]
-        window.set_simple_fullscreen(false).map_err(|e| e.to_string())?;
         window.destroy().map_err(|e| e.to_string())?;
     }
     *target.0.lock().map_err(|e| e.to_string())? = None;

@@ -1,0 +1,6 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "icon": ["../app-icon-mac.png", "icons/icon.icns"]
+  }
+}

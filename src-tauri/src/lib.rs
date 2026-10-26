@@ -79,14 +79,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(commands::PresentationTarget(std::sync::Mutex::new(None)))
         .on_window_event(|window, event| {
-            #[cfg(target_os = "macos")]
-            if window.label() == "presentation" && matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
-                let _ = window.set_simple_fullscreen(false);
-            }
             if window.label() == "main" && matches!(event, tauri::WindowEvent::Destroyed) {
                 if let Some(presentation) = window.app_handle().get_webview_window("presentation") {
-                    #[cfg(target_os = "macos")]
-                    let _ = presentation.set_simple_fullscreen(false);
                     let _ = presentation.destroy();
                 }
             }

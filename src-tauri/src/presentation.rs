@@ -19,6 +19,31 @@ fn wait_until(mut ready: impl FnMut() -> Result<bool, String>, message: &str) ->
     }
 }
 
+// Only this window is raised above the menu bar on its own screen. Never change
+// NSApplication presentationOptions: those would also hide the editor's Dock.
+#[cfg(target_os = "macos")]
+fn fill_screen_without_hiding_dock(window: &WebviewWindow) -> Result<(), String> {
+    let (send, receive) = std::sync::mpsc::sync_channel(1);
+    let native_window = window.clone();
+    window.run_on_main_thread(move || {
+        let result = (|| {
+            let pointer = native_window.ns_window().map_err(|e| e.to_string())?;
+            // Tauri owns this NSWindow; access it only on the AppKit main thread
+            // and do not retain the borrowed pointer beyond this callback.
+            let native = unsafe { (pointer as *const objc2_app_kit::NSWindow).as_ref() }
+                .ok_or("발표 창을 찾을 수 없습니다.")?;
+            let screen = native.screen().ok_or("발표 디스플레이를 찾을 수 없습니다.")?;
+            native.setFrame_display(screen.frame(), true);
+            native.setLevel(objc2_app_kit::NSMainMenuWindowLevel + 1);
+            native.setHidesOnDeactivate(false);
+            Ok(())
+        })();
+        let _ = send.send(result);
+    }).map_err(|e| e.to_string())?;
+    receive.recv_timeout(Duration::from_secs(3))
+        .map_err(|_| "발표 화면 배치가 완료되지 않았습니다.".to_owned())?
+}
+
 pub async fn configure(window: WebviewWindow, main: WebviewWindow, monitor: Monitor) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         let target = logical_position(monitor.position().x, monitor.position().y, monitor.scale_factor());
@@ -42,10 +67,10 @@ pub async fn configure(window: WebviewWindow, main: WebviewWindow, monitor: Moni
             { Ok(near(position.x as f64, monitor.position().x as f64) && near(position.y as f64, monitor.position().y as f64)) }
         }, "발표 창을 다른 디스플레이로 이동하지 못했습니다. 디스플레이 연결과 배치를 확인해주세요.")?;
 
-        // Fullscreen itself sets the screen size. A queued set_size here could
-        // run after fullscreen and shrink the window back to its original bounds.
+        // macOS: a borderless screen-sized window preserves the editor's Dock.
+        // Set its native frame synchronously, after the monitor move has settled.
         #[cfg(target_os = "macos")]
-        window.set_simple_fullscreen(true).map_err(|e| e.to_string())?;
+        fill_screen_without_hiding_dock(&window)?;
         #[cfg(not(target_os = "macos"))]
         window.set_fullscreen(true).map_err(|e| e.to_string())?;
 

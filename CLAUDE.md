@@ -142,10 +142,10 @@ export interface DailyData {
 - 발표 창은 `index.html?presentation=1` → `src/presentation/PresentationApp.tsx`. 고정 1744×1012 좌표를 비율 유지 확대. 편집 도크·선택 테두리·조작 버튼을 숨기며 편집/저장 effect는 실행하지 않음.
 - `src/presentation/sync.ts`: 편집 창이 상태의 원본. `useBoardState`로 판·시정표·학생 위젯 상태를 32ms 단위 묶음 전송. 발표 창 준비 이벤트에 전체 스냅샷 전송, 이후 변경 키만 전송하며 data URL 이미지는 연결당 한 번 전송. 드래그 도중 DOM 위치/크기도 별도 전달.
 - 메인 창에서 판을 전환하면 발표 창도 전환. 대시보드/학생 목록에서는 발표 창에 판 선택 안내 표시. Esc / 전체화면 버튼으로 종료, 모니터 분리 감지 시 발표 창 종료.
-- macOS는 `set_simple_fullscreen`으로 별도 Space 전환 없이 출력하며 종료 시 복원. 다른 플랫폼은 일반 전체화면. `src-tauri/src/presentation.rs`에서 대상 모니터의 배율로 논리 좌표를 계산하고, 실제 창 위치·소속 모니터가 바뀐 것을 확인한 뒤 전체화면 적용. 화면 크기까지 확인 후 창 표시하며, 각 단계가 3초 내 완료되지 않으면 창을 닫고 오류 표시. 창 이동/크기 명령은 macOS에서 비동기이므로 연속 호출만으로 완료를 가정하지 않음.
+- macOS 발표 창은 테두리 없는 창을 `NSScreen.frame`에 맞추고 해당 창만 메뉴 막대 위로 올림. `NSApplication.presentationOptions`나 simple fullscreen을 사용하지 않아 편집 화면의 Dock·메뉴 막대 자동 숨김을 유발하지 않음. `src-tauri/src/presentation.rs`에서 대상 모니터 배율로 좌표를 계산하고 실제 이동 완료 → AppKit 메인 스레드에서 프레임 설정 → 크기 확인 → 표시 순서로 실행. 다른 플랫폼은 일반 전체화면, 디스플레이 하나일 때는 기존 메인 창 전체화면 유지. 단계별 3초 제한을 넘으면 창을 닫고 오류 표시.
 - `PresentationVideo.tsx`: 편집 창에서 영상 재생·일시정지·탐색 조작, 발표 창은 음소거로 동기화하여 중복 오디오 방지. YouTube는 `src-tauri/src/youtube-player.html` API 브리지, Vimeo는 플레이어 메시지 API 사용. 로컬 영상도 지원. 임베드 영상은 네트워크/제공자 정책에 영향받음.
 - 커맨드: `start_presentation` (다른 화면 없으면 false), `stop_presentation`, `presentation_status`.
-- 검증: `npm run test:presentation`, `npm run build`, `cargo check --manifest-path src-tauri/Cargo.toml`. macOS WebKit 렌더링 smoke test는 빌드 후 `swift scripts/presentation-webkit-smoke.swift` (임시 데이터, 실제 DB 접근 없음). 실제 디스플레이의 DPI·배치·연결 해제 및 외부 영상 재생은 실기기 확인 필요.
+- 검증: `npm run test:presentation`, `npm run build`, `cargo check --manifest-path src-tauri/Cargo.toml`. Dock·메뉴 막대 설정 유지 검사는 `swift scripts/presentation-dock-smoke.swift`. macOS WebKit 렌더링 smoke test는 빌드 후 `swift scripts/presentation-webkit-smoke.swift` (임시 데이터, 실제 DB 접근 없음). 실제 디스플레이의 DPI·배치·연결 해제 및 외부 영상 재생은 실기기 확인 필요.
 
 ## 구현된 기능
 - **자유 캔버스**: 텍스트/스티커/사진/카드/비디오 자유 배치, 드래그/리사이즈/회전
@@ -283,6 +283,16 @@ open_url, get_youtube_proxy_port
 - **릴리즈 저장소**: PanDeckI 저장소 자체(공개). 워크플로우는 기본 `GITHUB_TOKEN`으로 릴리즈 생성 — PAT 불필요. 예전 dida 앱의 `dida-releases`와 섞이면 안 됨
 - **자동 확인**: 앱 시작 3초 후 `UpdateNotice`(`src/components/UpdateNotice.tsx`)가 `check()` → 우측 하단 알림(업데이트/나중에, 다운로드 진행률). dev 모드에서는 건너뜀. 설정 → 정보의 수동 버튼도 유지
 - **앱 아이콘**: 원본은 루트 `app-icon.png`(1024×1024, 투명 배경). 교체 시 `npx tauri icon app-icon.png -o src-tauri/icons`로 전체 재생성
+  - **macOS `icon.icns`는 별도**: macOS 26(Tahoe)은 둥근 사각형 틀을 꽉 채우지 않는(투명 여백 있는) 아이콘을 회색 판 위에 축소해 올림. 그래서 macOS용은 배경을 캔버스 끝까지 채운 `app-icon-mac.png`로 만든다 (macOS 개발 실행도 `tauri.macos.conf.json`에서 이 PNG를 사용하며, Tauri 호환을 위해 불투명 RGBA 형식으로 저장)
+  - `tauri.macos.conf.json`에서 `../app-icon-mac.png`와 `icons/icon.icns`를 macOS 전용으로 지정. Windows 아이콘은 기본 설정 유지.
+  - `tauri icon` 실행 후 반드시 icns를 다시 교체:
+    ```bash
+    python3 scripts/make-mac-icon.py app-icon.png app-icon-mac.png 0.80   # Pillow, numpy 필요
+    mkdir -p /tmp/PanDeckI.iconset && for s in 16 32 128 256 512; do
+      sips -z $s $s app-icon-mac.png --out /tmp/PanDeckI.iconset/icon_${s}x${s}.png
+      sips -z $((s*2)) $((s*2)) app-icon-mac.png --out /tmp/PanDeckI.iconset/icon_${s}x${s}@2x.png; done
+    iconutil -c icns /tmp/PanDeckI.iconset -o src-tauri/icons/icon.icns
+    ```
 - **서명 키**: `~/.tauri/pandecki.key` (로컬, 비밀번호 없음, 1.0.23부터 dida 키와 분리), 공개키는 `tauri.conf.json`에 포함
 - **GitHub Secret**: `TAURI_SIGNING_PRIVATE_KEY` (비밀번호 없음)
 - **릴리즈 방법**: 버전 태그 푸쉬 → GitHub Actions 자동 빌드 (macOS aarch64 + Windows x86_64 병렬)
