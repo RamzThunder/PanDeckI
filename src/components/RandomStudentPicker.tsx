@@ -260,7 +260,14 @@ export default function RandomStudentPicker({
           <button onClick={onMoveBack} title="뒤로"><Icon name="sendBackward" /></button>
           <button onClick={onSendBack} title="맨뒤로"><Icon name="sendBack" /></button>
           <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--color-border)', margin: '0 2px' }} />
-          <button className="danger" onClick={onClose} title="위젯 닫기"><Icon name="trash" /></button>
+          <button className="danger" onClick={() => {
+            // 삭제 후 추첨 완료 콜백이 저장 기록을 다시 만들지 않도록 중단한다.
+            timersRef.current.forEach(window.clearTimeout)
+            timersRef.current = []
+            setDrawing(false)
+            setRollingName('')
+            onClose()
+          }} title="위젯 닫기"><Icon name="trash" /></button>
           <button className={showSettings ? 'active' : ''} onClick={() => { setShowSettings(v => !v); setShowMore(false) }} title="설정"><Icon name="settings" /></button>
           <button className={showMore ? 'active' : ''} onClick={() => { setShowMore(v => !v); setShowSettings(false) }} title="더보기"><Icon name="more" /></button>
           {showMore && (

@@ -2505,6 +2505,7 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
         onClose={() => {
           setShowRandomPicker(false)
           setRandomPickerSelected(false)
+          api.settings.set(`pickerWidget_${dateStr}`, '').catch(console.error)
         }}
         z={randomPickerZ}
         maxZ={maxZ}
@@ -2525,7 +2526,11 @@ export default function DailyView({ boardKey, boardTitle, systemFonts, studentLi
         visible={showGroupMaker}
         selected={groupMakerSelected}
         onSelect={() => { setGroupMakerSelected(true); setSelectedId(null); setMultiIds([]) }}
-        onClose={() => { setShowGroupMaker(false); setGroupMakerSelected(false) }}
+        onClose={() => {
+          setShowGroupMaker(false)
+          setGroupMakerSelected(false)
+          api.settings.set(`groupWidget_${dateStr}`, '').catch(console.error)
+        }}
         z={groupMakerZ}
         maxZ={maxZ}
         onBringFront={() => setGroupMakerZ(maxZ + 1)}

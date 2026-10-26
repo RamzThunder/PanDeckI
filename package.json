@@ -1,6 +1,6 @@
 {
   "name": "pandecki",
-  "version": "1.0.28",
+  "version": "1.0.29",
   "description": "PanDeckI classroom board",
   "type": "module",
   "scripts": {

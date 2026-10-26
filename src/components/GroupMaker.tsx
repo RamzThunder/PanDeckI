@@ -260,7 +260,13 @@ export default function GroupMaker({
           <button onClick={onMoveBack} title="뒤로"><Icon name="sendBackward" /></button>
           <button onClick={onSendBack} title="맨뒤로"><Icon name="sendBack" /></button>
           <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--color-border)', margin: '0 2px' }} />
-          <button className="danger" onClick={onClose} title="위젯 닫기"><Icon name="trash" /></button>
+          <button className="danger" onClick={() => {
+            timersRef.current.forEach(window.clearTimeout)
+            timersRef.current = []
+            setRolling(false)
+            setRollingGroups(null)
+            onClose()
+          }} title="위젯 닫기"><Icon name="trash" /></button>
           <button className={showSettings ? 'active' : ''} onClick={() => setShowSettings(v => !v)} title="설정"><Icon name="settings" /></button>
         </div>
       )}
